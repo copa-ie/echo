@@ -599,6 +599,7 @@ public class SaidItService extends Service {
                 "Recording Channel",
                 NotificationManager.IMPORTANCE_DEFAULT
         );
+        channel.setShowBadge(false);
         NotificationManager notificationManager = getSystemService(NotificationManager.class);
         notificationManager.createNotificationChannel(channel);
 
