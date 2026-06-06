@@ -255,6 +255,9 @@ public class SaidItService extends Service {
                     // Handle error during file creation or closing writer
                     showToast(getString(R.string.cant_create_file) + file.getAbsolutePath());
                     Log.e(TAG, "Can't create file " + file.getAbsolutePath(), e);
+                } finally {
+                    // Clear the audio memory after saving
+                    audioMemory.reset();
                 }
             }
         });

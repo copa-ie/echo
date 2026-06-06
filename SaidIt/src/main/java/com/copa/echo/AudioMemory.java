@@ -136,4 +136,19 @@ public class AudioMemory {
         return stats;
     }
 
+    public synchronized void reset() {
+        // Move all filled buffers back to free list
+        while (!filled.isEmpty()) {
+            free.addLast(filled.removeFirst());
+        }
+        // Reset current buffer
+        if (current != null) {
+            free.addLast(current);
+            current = null;
+        }
+        offset = 0;
+        currentWasFilled = false;
+        System.gc();
+    }
+
 }
