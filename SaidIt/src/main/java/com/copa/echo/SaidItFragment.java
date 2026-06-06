@@ -43,6 +43,9 @@ import androidx.core.app.NotificationManagerCompat;
 import androidx.core.content.FileProvider;
 
 import java.io.File;
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.Locale;
 
 import com.copa.echo.android.TimeFormat;
 import com.copa.echo.android.Views;
@@ -420,23 +423,12 @@ public class SaidItFragment extends Fragment {
                                 if (keepRecording) {
                                     echo.startRecording(seconds);
                                 } else {
-                                    //create alert dialog with exittext to name the file
-                                    View dialogView = View.inflate(getActivity(), R.layout.dialog_save_recording, null);
-                                    EditText fileName = dialogView.findViewById(R.id.recording_name);
-                                    new AlertDialog.Builder(getActivity())
-                                        .setView(dialogView)
-                                        .setPositiveButton("Save", new DialogInterface.OnClickListener() {
-                                            @Override
-                                            public void onClick(DialogInterface dialog, int which) {
-                                                if(fileName.getText().toString().length() > 0){
-                                                    echo.dumpRecording(seconds, new PromptFileReceiver(getActivity()),fileName.getText().toString());
-                                                } else {
-                                                    Toast.makeText(getActivity(), "Please enter a file name", Toast.LENGTH_SHORT).show();
-                                                }
-                                            }
-                                        })
-                                        .setNegativeButton("Cancel", null)
-                                        .show();
+                                    // Generate automatic filename with format Ymd_his
+                                    TimeZone timeZoneLocal = TimeZone.getDefault();
+                                    SimpleDateFormat sdf = new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US);
+                                    sdf.setTimeZone(timeZoneLocal);
+                                    String autoFileName = sdf.format(new Date());
+                                    echo.dumpRecording(seconds, new PromptFileReceiver(getActivity()), autoFileName);
                                     pd.dismiss();
                                 }
                             }
