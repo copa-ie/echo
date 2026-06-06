@@ -4,11 +4,6 @@ Echo
 Time travelling recorder for Android.
 It is free/libre and gratis software.
 
-Download
----
-
-* [F-Droid](https://f-droid.org/repository/browse/?fdid=com.copa.echo)
-
 Architecture
 ---
 
