@@ -30,6 +30,9 @@ import android.widget.Toast;
 
 import java.io.File;
 import java.io.IOException;
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.Locale;
 
 import simplesound.pcm.WavAudioFormat;
 import simplesound.pcm.WavFileWriter;
@@ -51,6 +54,9 @@ public class SaidItService extends Service {
 
     HandlerThread audioThread;
     Handler audioHandler; // used to post messages to audio thread
+    private static final int AUTO_SAVE_REQUEST_CODE = 12345;
+    static final String AUTO_SAVE_ENABLED_KEY = "auto_save_enabled";
+    private static final long AUTO_SAVE_INTERVAL_MILLIS = 5L * 60L * 1000L;
 
     @Override
     public void onCreate() {
@@ -70,12 +76,15 @@ public class SaidItService extends Service {
             innerStartListening();
         }
 
+        scheduleAutoSave();
+
     }
 
     @Override
     public void onDestroy() {
         stopRecording(null, "");
         innerStopListening();
+        cancelAutoSave();
         stopForeground(true);
     }
 
@@ -526,6 +535,19 @@ public class SaidItService extends Service {
         return 1f / FILL_RATE;
     }
 
+    public boolean isAutoSaveEnabled() {
+        return getSharedPreferences(PACKAGE_NAME, MODE_PRIVATE).getBoolean(AUTO_SAVE_ENABLED_KEY, true);
+    }
+
+    public void setAutoSaveEnabled(boolean enabled) {
+        getSharedPreferences(PACKAGE_NAME, MODE_PRIVATE).edit().putBoolean(AUTO_SAVE_ENABLED_KEY, enabled).commit();
+        if (enabled) {
+            scheduleAutoSave();
+        } else {
+            cancelAutoSave();
+        }
+    }
+
     class BackgroundRecorderBinder extends Binder {
         public SaidItService getService() {
             return SaidItService.this;
@@ -535,6 +557,13 @@ public class SaidItService extends Service {
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         startForeground(FOREGROUND_NOTIFICATION_ID, buildNotification(), ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE);
+        
+        // Handle auto-save action
+        if (intent != null && AutoSaveReceiver.ACTION_AUTO_SAVE.equals(intent.getAction())) {
+            Log.d(TAG, "Auto-save action triggered");
+            autoSaveAudio();
+        }
+        
         return START_STICKY;
     }
 
@@ -574,6 +603,137 @@ public class SaidItService extends Service {
         notificationManager.createNotificationChannel(channel);
 
         return notificationBuilder.build();
+    }
+
+    /**
+     * Schedule automatic audio saving every 5 minutes
+     */
+    @SuppressLint("MissingPermission")
+    private void scheduleAutoSave() {
+        try {
+            final SharedPreferences preferences = getSharedPreferences(PACKAGE_NAME, MODE_PRIVATE);
+            if (!preferences.getBoolean(AUTO_SAVE_ENABLED_KEY, true)) {
+                Log.d(TAG, "Auto-save disabled, not scheduling");
+                cancelAutoSave();
+                return;
+            }
+            Intent autoSaveIntent = new Intent(this, AutoSaveReceiver.class);
+            autoSaveIntent.setAction(AutoSaveReceiver.ACTION_AUTO_SAVE);
+            
+            PendingIntent pendingIntent = PendingIntent.getBroadcast(
+                    this,
+                    AUTO_SAVE_REQUEST_CODE,
+                    autoSaveIntent,
+                    PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+            );
+            
+            AlarmManager alarmManager = (AlarmManager) getSystemService(ALARM_SERVICE);
+            if (alarmManager != null) {
+                // Schedule the alarm to repeat every 5 minutes
+                alarmManager.setAndAllowWhileIdle(
+                        AlarmManager.ELAPSED_REALTIME_WAKEUP,
+                        SystemClock.elapsedRealtime() + AUTO_SAVE_INTERVAL_MILLIS,
+                        pendingIntent
+                );
+                Log.d(TAG, "Auto-save alarm scheduled every 5 minutes");
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Error scheduling auto-save", e);
+        }
+    }
+
+    /**
+     * Cancel automatic audio saving
+     */
+    private void cancelAutoSave() {
+        try {
+            Intent autoSaveIntent = new Intent(this, AutoSaveReceiver.class);
+            autoSaveIntent.setAction(AutoSaveReceiver.ACTION_AUTO_SAVE);
+            
+            PendingIntent pendingIntent = PendingIntent.getBroadcast(
+                    this,
+                    AUTO_SAVE_REQUEST_CODE,
+                    autoSaveIntent,
+                    PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+            );
+            
+            AlarmManager alarmManager = (AlarmManager) getSystemService(ALARM_SERVICE);
+            if (alarmManager != null) {
+                alarmManager.cancel(pendingIntent);
+                Log.d(TAG, "Auto-save alarm cancelled");
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Error cancelling auto-save", e);
+        }
+    }
+
+    /**
+     * Automatically save audio to file every 5 minutes without stopping listening
+     */
+    public void autoSaveAudio() {
+        scheduleAutoSave();
+        if (state != STATE_LISTENING && state != STATE_RECORDING) {
+            Log.d(TAG, "Auto-save: Not in listening or recording state, skipping");
+            return;
+        }
+
+        audioHandler.post(new Runnable() {
+            @Override
+            public void run() {
+                flushAudioRecord();
+                int bytesAvailable = audioMemory.countFilled();
+
+                if (bytesAvailable <= 0) {
+                    Log.d(TAG, "Auto-save: No audio data to save");
+                    return;
+                }
+
+                try {
+                    // Get the storage directory
+                    File storageDir;
+                    if (isExternalStorageWritable()) {
+                        storageDir = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC), "Echo");
+                    } else {
+                        storageDir = new File(getFilesDir(), "Echo");
+                    }
+
+                    if (!storageDir.exists()) {
+                        storageDir.mkdirs();
+                    }
+
+                    long millis = System.currentTimeMillis();
+                    String filename = new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(new Date(millis)) + ".wav";
+
+                    File file = new File(storageDir, filename);
+
+                    // Create the file
+                    if (!file.createNewFile()) {
+                        Log.e(TAG, "Failed to create auto-save file: " + file.getAbsolutePath());
+                        return;
+                    }
+
+                    // Write audio to file
+                    final WavAudioFormat format = new WavAudioFormat.Builder().sampleRate(SAMPLE_RATE).build();
+                    try (WavFileWriter writer = new WavFileWriter(format, file)) {
+                        audioMemory.read(0, new AudioMemory.Consumer() {
+                            @Override
+                            public int consume(byte[] array, int offset, int count) throws IOException {
+                                writer.write(array, offset, count);
+                                return 0;
+                            }
+                        });
+                        Log.d(TAG, "Auto-save: Audio saved to " + file.getAbsolutePath() + 
+                              " (" + writer.getTotalSampleBytesWritten() + " bytes)");
+                    } catch (IOException e) {
+                        Log.e(TAG, "Error writing audio file: " + file.getAbsolutePath(), e);
+                    } finally {
+                        audioMemory.reset();
+                    }
+                } catch (Exception e) {
+                    Log.e(TAG, "Error during auto-save", e);
+                }
+            }
+        });
     }
 
 }

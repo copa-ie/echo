@@ -32,6 +32,7 @@ public class SettingsActivity extends Activity {
     static final String TAG = SettingsActivity.class.getSimpleName();
     private final MemoryOnClickListener memoryClickListener = new MemoryOnClickListener();
     private final QualityOnClickListener qualityClickListener = new QualityOnClickListener();
+    private final AutoSaveToggleClickListener autoSaveToggleClickListener = new AutoSaveToggleClickListener();
 
 
     final WorkingDialog dialog = new WorkingDialog();
@@ -83,6 +84,15 @@ public class SettingsActivity extends Activity {
         ((TextView)findViewById(R.id.history_limit)).setText(timeFormatResult.text);
 
         highlightButtons();
+        syncAutoSaveUI();
+    }
+
+    private void syncAutoSaveUI() {
+        if (service == null) return;
+        Button toggle = (Button) findViewById(R.id.auto_save_toggle);
+        if (toggle != null) {
+            toggle.setText(service.isAutoSaveEnabled() ? R.string.auto_save_enabled : R.string.auto_save_disabled);
+        }
     }
 
     void highlightButtons() {
@@ -161,6 +171,7 @@ public class SettingsActivity extends Activity {
         root.findViewById(R.id.memory_low).setOnClickListener(memoryClickListener);
         root.findViewById(R.id.memory_medium).setOnClickListener(memoryClickListener);
         root.findViewById(R.id.memory_high).setOnClickListener(memoryClickListener);
+        root.findViewById(R.id.auto_save_toggle).setOnClickListener(autoSaveToggleClickListener);
 
         initSampleRateButton(root, R.id.quality_8kHz, 8000, 11025);
         initSampleRateButton(root, R.id.quality_16kHz, 16000, 22050);
@@ -271,4 +282,14 @@ public class SettingsActivity extends Activity {
             return 8000;
         }
     }
+
+    private class AutoSaveToggleClickListener implements View.OnClickListener {
+        @Override
+        public void onClick(View v) {
+            if (service == null) return;
+            service.setAutoSaveEnabled(!service.isAutoSaveEnabled());
+            syncAutoSaveUI();
+        }
+    }
+
 }

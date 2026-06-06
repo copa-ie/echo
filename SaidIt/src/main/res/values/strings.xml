@@ -113,6 +113,9 @@
     <string name="option_b_audio_quality">B) Sound quality</string>
     <string name="used_ram_description">Echo and other apps use system memory to keep their data. Large system memory consumption may slow other apps.</string>
     <string name="audio_quality_description">Quality of 8kHz is enough to recognize human speech. Higher options offer different tradeoffs between quality and memory consumption.</string>
+    <string name="auto_save_title">Automatic save</string>
+    <string name="auto_save_enabled">auto: enabled</string>
+    <string name="auto_save_disabled">auto: disabled</string>
     <string name="settings_return">Return</string>
 
     <!-- Others -->

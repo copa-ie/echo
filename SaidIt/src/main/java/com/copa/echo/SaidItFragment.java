@@ -74,6 +74,7 @@ public class SaidItFragment extends Fragment {
     private TextView history_limit;
     private TextView history_size;
     private TextView history_size_title;
+    private TextView auto_save_flag;
 
     private LinearLayout rec_section;
     private TextView rec_indicator;
@@ -186,6 +187,7 @@ public class SaidItFragment extends Fragment {
         history_limit = (TextView) rootView.findViewById(R.id.history_limit);
         history_size = (TextView) rootView.findViewById(R.id.history_size);
         history_size_title = (TextView) rootView.findViewById(R.id.history_size_title);
+        auto_save_flag = (TextView) rootView.findViewById(R.id.auto_save_flag);
 
         history_limit.setTypeface(robotoCondensedBold);
         history_size.setTypeface(robotoCondensedBold);
@@ -278,6 +280,11 @@ public class SaidItFragment extends Fragment {
                 } else {
                     ready_section.setVisibility(View.GONE);
                 }
+
+            }
+
+            if (echo != null && auto_save_flag != null) {
+                auto_save_flag.setText(echo.isAutoSaveEnabled() ? R.string.auto_save_enabled : R.string.auto_save_disabled);
             }
 
             TimeFormat.naturalLanguage(resources, totalMemory, timeFormatResult);
