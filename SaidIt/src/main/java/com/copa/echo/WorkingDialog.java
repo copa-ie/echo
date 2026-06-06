@@ -1,4 +1,4 @@
-package eu.mrogalski.saidit;
+package com.copa.echo;
 
 import android.os.Bundle;
 import android.view.LayoutInflater;

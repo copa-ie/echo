@@ -1,4 +1,4 @@
-package eu.mrogalski.saidit;
+package com.copa.echo;
 
 import android.app.Activity;
 import android.content.ActivityNotFoundException;
@@ -19,8 +19,8 @@ import androidx.core.content.FileProvider;
 import java.io.File;
 import java.net.URLConnection;
 
-import eu.mrogalski.StringFormat;
-import eu.mrogalski.android.TimeFormat;
+import com.copa.echo.android.StringFormat;
+import com.copa.echo.android.TimeFormat;
 
 public class RecordingDoneDialog extends ThemedDialog {
 

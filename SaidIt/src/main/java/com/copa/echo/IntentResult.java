@@ -1,4 +1,4 @@
-package eu.mrogalski.saidit;
+package com.copa.echo;
 public final class IntentResult {
 
     private final String contents;

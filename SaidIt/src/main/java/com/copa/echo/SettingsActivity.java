@@ -1,4 +1,4 @@
-package eu.mrogalski.saidit;
+package com.copa.echo;
 
 import android.app.Activity;
 import android.content.ComponentName;
@@ -24,9 +24,9 @@ import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
-import eu.mrogalski.StringFormat;
-import eu.mrogalski.android.TimeFormat;
-import eu.mrogalski.android.Views;
+import com.copa.echo.android.StringFormat;
+import com.copa.echo.android.TimeFormat;
+import com.copa.echo.android.Views;
 
 public class SettingsActivity extends Activity {
     static final String TAG = SettingsActivity.class.getSimpleName();

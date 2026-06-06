@@ -1,13 +1,13 @@
 <resources>
 
     <!-- Base application theme. -->
-    <style name="SaidIt" parent="Theme.AppCompat.Light">
+    <style name="SaidIt" parent="Theme.AppCompat">
         <item name="android:windowNoTitle">true</item>
 <!--
         <item name="android:buttonStyle">@style/Button</item>
 -->
         <item name="android:textViewStyle">@style/TextView</item>
-        <item name="android:windowBackground">@color/gray_e</item>
+        <item name="android:windowBackground">@color/gray_0</item>
         <item name="android:windowActionBar">false</item>
 
        <!-- <item name="android:alertDialogTheme">@style/SaidIt.AlertDialogTheme</item>
@@ -100,7 +100,7 @@
     </style>
 
     <style name="TextBase" parent="android:Widget.TextView">
-        <item name="android:textColor">@color/gray_0</item>
+        <item name="android:textColor">@color/gray_f</item>
         <item name="android:textSize">@dimen/info_text_size</item>
         <item name="android:gravity">center</item>
     </style>

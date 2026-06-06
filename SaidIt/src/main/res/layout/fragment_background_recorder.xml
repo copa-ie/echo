@@ -8,7 +8,7 @@
         android:layout_height="wrap_content"
         android:orientation="vertical"
         android:animateLayoutChanges="true"
-        tools:context="eu.mrogalski.saidit.SaidItFragment">
+        tools:context="com.copa.echo.SaidItFragment">
 
         <Button
             android:id="@+id/listen_button"

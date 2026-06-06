@@ -1,4 +1,4 @@
-package eu.mrogalski.saidit;
+package com.copa.echo;
 
 import android.annotation.SuppressLint;
 import android.app.Activity;
@@ -44,8 +44,8 @@ import androidx.core.content.FileProvider;
 
 import java.io.File;
 
-import eu.mrogalski.android.TimeFormat;
-import eu.mrogalski.android.Views;
+import com.copa.echo.android.TimeFormat;
+import com.copa.echo.android.Views;
 
 public class SaidItFragment extends Fragment {
 

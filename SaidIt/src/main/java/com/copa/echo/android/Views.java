@@ -1,10 +1,11 @@
-package eu.mrogalski.android;
+package com.copa.echo.android;
 
 import android.view.View;
 import android.view.ViewGroup;
 
 public class Views {
-    public static void search(ViewGroup viewGroup, SearchViewCallback callback) {
+    public static void search(ViewGroup viewGroup, SearchViewCallback callback)
+{
         final int cnt = viewGroup.getChildCount();
         for(int i = 0; i < cnt; ++i) {
             final View child = viewGroup.getChildAt(i);

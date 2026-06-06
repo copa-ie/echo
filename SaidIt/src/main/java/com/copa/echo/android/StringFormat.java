@@ -1,4 +1,4 @@
-package eu.mrogalski;
+package com.copa.echo.android;
 
 import java.text.DecimalFormat;
 
