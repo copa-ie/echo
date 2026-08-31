@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:paddingLeft="16dp"
+    android:paddingRight="16dp"
+    android:paddingTop="10dp"
+    android:paddingBottom="10dp">
+
+    <TextView
+        android:id="@+id/recording_range"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:tag="bold"
+        android:gravity="left"
+        android:textColor="@color/gray_f"
+        android:textSize="@dimen/info_text_size" />
+
+    <TextView
+        android:id="@+id/recording_detail"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="left"
+        style="@style/SmallText" />
+
+</LinearLayout>

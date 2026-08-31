@@ -33,6 +33,12 @@ public class SettingsActivity extends Activity {
     private final MemoryOnClickListener memoryClickListener = new MemoryOnClickListener();
     private final QualityOnClickListener qualityClickListener = new QualityOnClickListener();
     private final AutoSaveToggleClickListener autoSaveToggleClickListener = new AutoSaveToggleClickListener();
+    private final AutoSaveIntervalClickListener autoSaveIntervalClickListener = new AutoSaveIntervalClickListener();
+
+    /** Selectable automatic save intervals, in minutes, paired with the buttons below. */
+    private static final int[] INTERVAL_MINUTES = { 1, 5, 15, 30, 60 };
+    private static final int[] INTERVAL_BUTTONS = {
+            R.id.interval_1, R.id.interval_5, R.id.interval_15, R.id.interval_30, R.id.interval_60 };
 
 
     final WorkingDialog dialog = new WorkingDialog();
@@ -89,10 +95,23 @@ public class SettingsActivity extends Activity {
 
     private void syncAutoSaveUI() {
         if (service == null) return;
-        Button toggle = (Button) findViewById(R.id.auto_save_toggle);
-        if (toggle != null) {
-            toggle.setText(service.isAutoSaveEnabled() ? R.string.auto_save_enabled : R.string.auto_save_disabled);
+
+        final boolean enabled = service.isAutoSaveEnabled();
+        final Button toggle = (Button) findViewById(R.id.auto_save_toggle);
+        toggle.setText(enabled ? R.string.auto_save_enabled : R.string.auto_save_disabled);
+        toggle.setBackgroundResource(enabled ? R.drawable.green_button : R.drawable.gray_button);
+
+        final int current = service.getAutoSaveIntervalMinutes();
+        for (int i = 0; i < INTERVAL_BUTTONS.length; ++i) {
+            final Button button = (Button) findViewById(INTERVAL_BUTTONS[i]);
+            button.setText(getResources().getQuantityString(R.plurals.interval_minutes,
+                    INTERVAL_MINUTES[i], INTERVAL_MINUTES[i]));
+            final boolean selected = enabled && INTERVAL_MINUTES[i] == current;
+            button.setBackgroundResource(selected ? R.drawable.green_button : R.drawable.gray_button);
+            button.setEnabled(enabled);
         }
+
+        ((TextView) findViewById(R.id.storage_path)).setText(service.getRecordingsDir().getAbsolutePath());
     }
 
     void highlightButtons() {
@@ -172,6 +191,9 @@ public class SettingsActivity extends Activity {
         root.findViewById(R.id.memory_medium).setOnClickListener(memoryClickListener);
         root.findViewById(R.id.memory_high).setOnClickListener(memoryClickListener);
         root.findViewById(R.id.auto_save_toggle).setOnClickListener(autoSaveToggleClickListener);
+        for (int buttonId : INTERVAL_BUTTONS) {
+            root.findViewById(buttonId).setOnClickListener(autoSaveIntervalClickListener);
+        }
 
         initSampleRateButton(root, R.id.quality_8kHz, 8000, 11025);
         initSampleRateButton(root, R.id.quality_16kHz, 16000, 22050);
@@ -234,7 +256,7 @@ public class SettingsActivity extends Activity {
                     service.setMemorySize(memory);
                     service.getState(new SaidItService.StateCallback() {
                         @Override
-                        public void state(boolean listeningEnabled, boolean recording, float memorized, float totalMemory, float recorded) {
+                        public void state(SaidItService.State state) {
                             syncUI();
                             if (dialog.isVisible()) dialog.dismiss();
                         }
@@ -265,7 +287,7 @@ public class SettingsActivity extends Activity {
                     service.setSampleRate(sampleRate);
                     service.getState(new SaidItService.StateCallback() {
                         @Override
-                        public void state(boolean listeningEnabled, boolean recording, float memorized, float totalMemory, float recorded) {
+                        public void state(SaidItService.State state) {
                             syncUI();
                             if (dialog.isVisible()) dialog.dismiss();
                         }
@@ -288,6 +310,20 @@ public class SettingsActivity extends Activity {
         public void onClick(View v) {
             if (service == null) return;
             service.setAutoSaveEnabled(!service.isAutoSaveEnabled());
+            syncAutoSaveUI();
+        }
+    }
+
+    private class AutoSaveIntervalClickListener implements View.OnClickListener {
+        @Override
+        public void onClick(View v) {
+            if (service == null) return;
+            for (int i = 0; i < INTERVAL_BUTTONS.length; ++i) {
+                if (INTERVAL_BUTTONS[i] == v.getId()) {
+                    service.setAutoSaveIntervalMinutes(INTERVAL_MINUTES[i]);
+                    break;
+                }
+            }
             syncAutoSaveUI();
         }
     }

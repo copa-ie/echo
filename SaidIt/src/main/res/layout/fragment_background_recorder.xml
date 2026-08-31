@@ -10,248 +10,175 @@
         android:animateLayoutChanges="true"
         tools:context="com.copa.echo.SaidItFragment">
 
-        <Button
-            android:id="@+id/listen_button"
-            style="@style/GreenButton"
-            android:layout_width="match_parent"
-            android:layout_height="60dp"
-            android:gravity="center"
-            android:text="@string/listening_enabled_disable" />
-
-        <TextView
-            android:layout_marginTop="20dp"
-            android:layout_marginBottom="5dp"
-            android:layout_marginLeft="20dp"
-            android:layout_marginRight="20dp"
+        <!-- Status banner: colour, dot and text all say whether audio is being captured. -->
+        <LinearLayout
+            android:id="@+id/status_banner"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="@string/listening_description"/>
+            android:orientation="vertical"
+            android:background="@color/dark_green"
+            android:clickable="true"
+            android:focusable="true"
+            android:gravity="center"
+            android:paddingTop="14dp"
+            android:paddingBottom="14dp">
+
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical">
+
+                <View
+                    android:id="@+id/status_dot"
+                    android:layout_width="16dp"
+                    android:layout_height="16dp"
+                    android:layout_marginRight="12dp"
+                    android:background="@drawable/status_dot" />
+
+                <TextView
+                    android:id="@+id/status_text"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textColor="@color/gray_f"
+                    android:textSize="@dimen/emph_text_size"
+                    android:text="@string/status_listening" />
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/status_hint"
+                android:layout_marginTop="4dp"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="@color/gray_e"
+                android:textSize="@dimen/small_text_size"
+                android:text="@string/status_hint_stop" />
+        </LinearLayout>
+
+        <!-- How much audio is currently held in memory. -->
+        <TextView
+            android:layout_marginTop="24dp"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/memory_label" />
+
+        <TextView
+            android:id="@+id/memory_size"
+            android:layout_marginTop="2dp"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            style="@style/EmphasizedText"
+            android:text="@string/sample_time" />
+
+        <ProgressBar
+            android:id="@+id/memory_bar"
+            style="?android:attr/progressBarStyleHorizontal"
+            android:layout_width="match_parent"
+            android:layout_height="10dp"
+            android:layout_marginTop="10dp"
+            android:layout_marginLeft="30dp"
+            android:layout_marginRight="30dp"
+            android:max="1000"
+            android:progressTint="@color/green"
+            android:progressBackgroundTint="@color/gray_6" />
+
+        <TextView
+            android:id="@+id/memory_limit"
+            android:layout_marginTop="6dp"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            style="@style/SmallText"
+            android:gravity="center"
+            android:text="@string/sample_time" />
+
+        <!-- The single save action: everything that is in memory right now. -->
+        <Button
+            android:id="@+id/save_everything"
+            style="@style/Button"
+            android:background="@drawable/green_button"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="26dp"
+            android:layout_marginLeft="24dp"
+            android:layout_marginRight="24dp"
+            android:paddingTop="18dp"
+            android:paddingBottom="18dp"
+            android:text="@string/save_everything" />
+
+        <TextView
+            android:id="@+id/save_everything_hint"
+            android:layout_marginTop="8dp"
+            android:layout_marginLeft="24dp"
+            android:layout_marginRight="24dp"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            style="@style/SmallText"
+            android:gravity="center"
+            android:text="@string/save_everything_hint" />
+
+        <View
+            android:layout_marginLeft="50dp"
+            android:layout_marginRight="50dp"
+            android:layout_marginTop="22dp"
+            android:layout_marginBottom="18dp"
+            android:layout_width="match_parent"
+            android:layerType="software"
+            android:layout_height="7dp"
+            android:background="@drawable/dashed_line" />
+
+        <!-- Automatic save status. -->
+        <TextView
+            android:id="@+id/auto_save_status"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/auto_save_disabled_status" />
+
+        <TextView
+            android:id="@+id/auto_save_next"
+            android:layout_marginTop="4dp"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            style="@style/SmallText"
+            android:gravity="center"
+            android:text="" />
+
+        <TextView
+            android:id="@+id/last_save"
+            android:layout_marginTop="10dp"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            style="@style/SmallText"
+            android:gravity="center"
+            android:text="" />
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:animateLayoutChanges="true"
-            android:clipChildren="false"
-            android:id="@+id/ready_section">
+            android:layout_marginLeft="24dp"
+            android:layout_marginRight="24dp"
+            android:layout_marginTop="20dp"
+            android:layout_marginBottom="30dp"
+            android:orientation="horizontal">
 
-            <TextView
-                android:id="@+id/history_size_title"
-                android:layout_marginTop="5dp"
-                android:layout_marginBottom="5dp"
-                android:layout_width="match_parent"
+            <Button
+                android:id="@+id/recordings_button"
+                style="@style/Button"
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:text="@string/history_size_title_static"/>
-
-            <TextView
-                android:id="@+id/history_size"
-                android:layout_marginTop="5dp"
-                android:layout_marginBottom="5dp"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                style="@style/EmphasizedText"
-                android:text=""/>
-
-            <TextView
-                android:layout_marginTop="5dp"
-                android:layout_marginBottom="5dp"
-                android:layout_marginLeft="40dp"
-                android:layout_marginRight="40dp"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="@string/save_description"/>
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:clipChildren="false"
-                android:layout_marginLeft="30dp"
-                android:layout_marginRight="30dp"
-                android:layout_marginTop="10dp"
-                android:layout_marginBottom="10dp"
-                android:orientation="horizontal">
-
-                <Button
-                    android:id="@+id/record_last_minute"
-                    android:text="@string/record_one_minute"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    style="@style/Button"/>
-                <Button
-                    android:id="@+id/record_last_5_minutes"
-                    android:text="@string/record_five_minutes"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_marginLeft="10dp"
-                    android:layout_marginRight="10dp"
-                    android:layout_weight="1"
-                    style="@style/Button"/>
-                <Button
-                    android:id="@+id/record_last_max"
-                    android:text="@string/record_all_memory"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    style="@style/Button" />
-            </LinearLayout>
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:clipChildren="false"
-                android:layout_marginLeft="30dp"
-                android:layout_marginRight="30dp"
-                android:layout_marginBottom="10dp"
-                android:orientation="horizontal">
-
-                <Button
-                    android:id="@+id/record_last_30_minutes"
-                    android:text="@string/record_30_minutes"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    style="@style/Button"/>
-
-                <Button
-                    android:id="@+id/record_last_2_hrs"
-                    style="@style/Button"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_marginLeft="10dp"
-                    android:layout_marginRight="10dp"
-                    android:layout_weight="1"
-                    android:text="@string/record_2_hrs" />
-                <Button
-                    android:id="@+id/record_last_6_hrs"
-                    android:text="@string/record_6_hrs"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    style="@style/Button" />
-            </LinearLayout>
-
-            <TextView
-                android:layout_marginTop="5dp"
-                android:layout_marginBottom="5dp"
-                android:layout_marginLeft="30dp"
-                android:layout_marginRight="30dp"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="@string/record_description"/>
-
-
-            <View
-                android:layout_marginLeft="50dp"
-                android:layout_marginRight="50dp"
-                android:layout_marginTop="20dp"
-                android:layout_marginBottom="20dp"
-                android:layout_width="match_parent"
-                android:layerType="software"
-                android:layout_height="7dp"
-                android:background="@drawable/dashed_line" />
-
-            <TextView
-                android:layout_marginTop="5dp"
-                android:layout_marginBottom="5dp"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="@string/upper_memory_limit_start"/>
-
-            <TextView
-                android:id="@+id/history_limit"
-                android:layout_marginTop="5dp"
-                android:layout_marginBottom="5dp"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                style="@style/EmphasizedText"
-                android:text="@string/sample_time"/>
-
-            <TextView
-                android:layout_marginTop="5dp"
-                android:layout_marginBottom="5dp"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="@string/upper_memory_limit_settings_start"/>
-
-            <TextView
-                android:id="@+id/auto_save_flag"
-                android:layout_marginTop="5dp"
-                android:layout_marginBottom="5dp"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="auto: enabled"/>
+                android:layout_weight="1"
+                android:layout_marginRight="10dp"
+                android:textSize="@dimen/info_text_size"
+                android:text="@string/recordings_title" />
 
             <Button
                 android:id="@+id/settings_button"
-                android:layout_marginTop="10dp"
-                android:layout_marginBottom="10dp"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_gravity="center"
                 style="@style/Button"
-                android:text="@string/upper_memory_limit_settings_end" />
-
-        </LinearLayout>
-
-        <LinearLayout
-            android:id="@+id/rec_section"
-            android:orientation="vertical"
-            android:visibility="gone"
-            tools:visibility="visible"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content">
-
-            <View
-                android:layout_marginLeft="50dp"
-                android:layout_marginRight="50dp"
-                android:layout_marginTop="20dp"
-                android:layout_marginBottom="20dp"
-                android:layout_width="match_parent"
-                android:layerType="software"
-                android:layout_height="7dp"
-                android:background="@drawable/dashed_line" />
-
-            <TextView
-                android:id="@+id/rec_indicator"
-                android:layout_marginTop="5dp"
-                android:layout_marginBottom="5dp"
-                android:layout_marginLeft="20dp"
-                android:layout_marginRight="20dp"
-                android:text="@string/recorded_static"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content" />
-
-            <TextView
-                android:id="@+id/rec_time"
-                android:layout_marginTop="5dp"
-                android:layout_marginBottom="5dp"
-                android:layout_width="match_parent"
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                style="@style/EmphasizedText"
-                android:text="@string/sample_time"/>
-
-            <TextView
-                android:layout_marginTop="5dp"
-                android:layout_marginBottom="5dp"
-                android:layout_marginLeft="20dp"
-                android:layout_marginRight="20dp"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="@string/recording_stop_description"/>
-
-            <Button
-                android:layout_width="60dp"
-                android:layout_height="60dp"
-                android:layout_gravity="center"
-                android:layout_marginTop="20dp"
-                android:layout_marginBottom="20dp"
-                android:id="@+id/rec_stop_button"
-                android:background="@color/light_red" />
-
+                android:layout_weight="1"
+                android:textSize="@dimen/info_text_size"
+                android:text="@string/settings_title" />
         </LinearLayout>
-
-
 
     </LinearLayout>
 </ScrollView>

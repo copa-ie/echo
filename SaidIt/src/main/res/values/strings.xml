@@ -114,8 +114,8 @@
     <string name="used_ram_description">Echo and other apps use system memory to keep their data. Large system memory consumption may slow other apps.</string>
     <string name="audio_quality_description">Quality of 8kHz is enough to recognize human speech. Higher options offer different tradeoffs between quality and memory consumption.</string>
     <string name="auto_save_title">Automatic save</string>
-    <string name="auto_save_enabled">auto: enabled</string>
-    <string name="auto_save_disabled">auto: disabled</string>
+    <string name="auto_save_enabled">Enabled</string>
+    <string name="auto_save_disabled">Disabled</string>
     <string name="settings_return">Return</string>
 
     <!-- Others -->
@@ -130,5 +130,78 @@
 <b>3GP</b> - oferuje najmocniejszą kompresję ale jest bardzo energożerny i może usunąć z nagrania drobne detale\n
 <b>MP4</b> - oferuje wysoką jakość i dobrą kompresję ale podobnie jak 3GP, szybko zużywa energię.</string>
     -->
+
+    <!-- Main screen: status, memory and the single save action -->
+
+    <string name="status_listening">RECORDING TO MEMORY</string>
+    <string name="status_recording_to_file">RECORDING TO FILE</string>
+    <string name="status_stopped">STOPPED</string>
+    <string name="status_hint_stop">Tap to stop</string>
+    <string name="status_hint_start">Tap to start</string>
+
+    <string name="memory_label">Audio held in memory</string>
+    <string name="memory_limit">of %1$s</string>
+
+    <string name="save_everything">SAVE EVERYTHING</string>
+    <string name="save_everything_hint">Writes everything that is in memory into a new file and empties the memory.</string>
+    <string name="nothing_to_save">There is nothing in memory to save yet.</string>
+
+    <plurals name="auto_save_enabled_status">
+        <item quantity="one">Saving automatically every minute</item>
+        <item quantity="other">Saving automatically every %d minutes</item>
+    </plurals>
+    <string name="auto_save_disabled_status">Automatic save is off</string>
+    <string name="auto_save_next">Next save in %1$s</string>
+    <string name="auto_save_paused">Paused while Echo is stopped</string>
+    <string name="last_save">Last saved at %1$s</string>
+
+    <!-- Ongoing notification -->
+
+    <string name="notification_channel_name">Recording</string>
+    <string name="notification_listening">Echo is recording to memory</string>
+    <string name="notification_recording_to_file">Echo is recording to a file</string>
+    <string name="notification_idle">Echo is stopped</string>
+    <string name="notification_idle_detail">Tap to start recording</string>
+    <plurals name="notification_auto_save_on">
+        <item quantity="one">Saving to a file every minute</item>
+        <item quantity="other">Saving to a file every %d minutes</item>
+    </plurals>
+    <string name="notification_auto_save_off">Automatic save is off</string>
+
+    <!-- Recordings screen -->
+
+    <string name="recordings_title">Recordings</string>
+    <string name="settings_title">Settings</string>
+    <string name="recordings_loading">Reading storage…</string>
+    <string name="recordings_ranges_title">Time covered on disk</string>
+    <string name="recordings_empty">No recording has been stored yet. Saved files will show up here.</string>
+    <string name="recordings_summary">%1$s · %2$s of audio · %3$s
+%4$s</string>
+    <string name="recordings_summary_empty">Nothing stored in
+%1$s</string>
+    <string name="recordings_range_line">%1$s  %2$s → %3$s
+%4$s · %5$s</string>
+    <string name="recordings_item_range">%1$s%2$s  %3$s → %4$s</string>
+    <string name="recordings_item_detail">%1$s · %2$s · %3$d kHz · %4$s</string>
+    <plurals name="recordings_file_count">
+        <item quantity="one">%d file</item>
+        <item quantity="other">%d files</item>
+    </plurals>
+    <string name="recordings_cant_open">No installed app can play this file.</string>
+    <string name="recordings_cant_delete">Couldn\'t delete the file.</string>
+    <string name="recordings_delete_title">Delete recording</string>
+    <string name="recordings_delete_message">Delete %1$s? This cannot be undone.</string>
+    <string name="recordings_delete_confirm">Delete</string>
+
+    <!-- Settings: automatic save -->
+
+    <string name="auto_save_description">While Echo is listening, the contents of audio memory are written to a new file on their own, so you never have to remember to save.</string>
+    <string name="auto_save_interval_title">Save every</string>
+    <string name="auto_save_interval_description">Each automatic save empties audio memory, so consecutive files continue one another without overlapping. A shorter interval means more, smaller files.</string>
+    <plurals name="interval_minutes">
+        <item quantity="one">%d min</item>
+        <item quantity="other">%d min</item>
+    </plurals>
+    <string name="storage_location_title">Recordings are saved in</string>
 
 </resources>

@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/recordings_layout"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical">
+
+    <TextView
+        android:layout_marginTop="16dp"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:tag="bold"
+        style="@style/EmphasizedText"
+        android:text="@string/recordings_title" />
+
+    <TextView
+        android:id="@+id/recordings_summary"
+        android:layout_marginTop="8dp"
+        android:layout_marginLeft="16dp"
+        android:layout_marginRight="16dp"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        style="@style/SmallText"
+        android:gravity="center"
+        android:text="@string/recordings_loading" />
+
+    <TextView
+        android:id="@+id/ranges_title"
+        android:layout_marginTop="14dp"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:visibility="gone"
+        android:text="@string/recordings_ranges_title" />
+
+    <LinearLayout
+        android:id="@+id/ranges_container"
+        android:layout_marginLeft="16dp"
+        android:layout_marginRight="16dp"
+        android:layout_marginTop="4dp"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical" />
+
+    <View
+        android:layout_marginLeft="50dp"
+        android:layout_marginRight="50dp"
+        android:layout_marginTop="16dp"
+        android:layout_marginBottom="8dp"
+        android:layout_width="match_parent"
+        android:layerType="software"
+        android:layout_height="7dp"
+        android:background="@drawable/dashed_line" />
+
+    <TextView
+        android:id="@+id/recordings_empty"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="20dp"
+        android:layout_marginLeft="16dp"
+        android:layout_marginRight="16dp"
+        android:visibility="gone"
+        android:text="@string/recordings_empty" />
+
+    <ListView
+        android:id="@+id/recordings_list"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:divider="@color/gray_6"
+        android:dividerHeight="1dp"
+        android:scrollbarStyle="outsideOverlay" />
+
+    <Button
+        android:id="@+id/recordings_return"
+        style="@style/Button"
+        android:layout_marginTop="10dp"
+        android:layout_marginBottom="20dp"
+        android:layout_gravity="center"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="@string/settings_return" />
+
+</LinearLayout>

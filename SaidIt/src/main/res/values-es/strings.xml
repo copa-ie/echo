@@ -1,0 +1,128 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- Notificaciones y errores -->
+
+    <string name="recording">Grabando…</string>
+    <string name="recording_saved">Grabación guardada</string>
+    <string name="cant_create_file">No se pudo crear el archivo: </string>
+    <string name="error_during_writing_history_into">Error al escribir el audio en: </string>
+    <string name="error_during_recording_into">Error al grabar en: </string>
+
+    <string name="notification_channel_name">Grabación</string>
+    <string name="notification_listening">Echo está grabando en memoria</string>
+    <string name="notification_recording_to_file">Echo está grabando a un archivo</string>
+    <string name="notification_idle">Echo está detenido</string>
+    <string name="notification_idle_detail">Toca para empezar a grabar</string>
+    <plurals name="notification_auto_save_on">
+        <item quantity="one">Guardando en un archivo cada minuto</item>
+        <item quantity="other">Guardando en un archivo cada %d minutos</item>
+    </plurals>
+    <string name="notification_auto_save_off">El guardado automático está desactivado</string>
+
+    <!-- Pantalla principal -->
+
+    <string name="status_listening">GRABANDO EN MEMORIA</string>
+    <string name="status_recording_to_file">GRABANDO A ARCHIVO</string>
+    <string name="status_stopped">DETENIDO</string>
+    <string name="status_hint_stop">Toca para detener</string>
+    <string name="status_hint_start">Toca para empezar</string>
+
+    <string name="memory_label">Audio guardado en memoria</string>
+    <string name="memory_limit">de %1$s</string>
+
+    <string name="save_everything">GUARDAR TODO</string>
+    <string name="save_everything_hint">Escribe todo lo que hay en memoria en un archivo nuevo y vacía la memoria.</string>
+    <string name="nothing_to_save">Todavía no hay nada en memoria que guardar.</string>
+
+    <plurals name="auto_save_enabled_status">
+        <item quantity="one">Guardando automáticamente cada minuto</item>
+        <item quantity="other">Guardando automáticamente cada %d minutos</item>
+    </plurals>
+    <string name="auto_save_disabled_status">Guardado automático desactivado</string>
+    <string name="auto_save_next">Próximo guardado en %1$s</string>
+    <string name="auto_save_paused">En pausa mientras Echo está detenido</string>
+    <string name="last_save">Último guardado a las %1$s</string>
+
+    <!-- Formato de tiempo -->
+
+    <plurals name="minute">
+        <item quantity="one">%d minuto</item>
+        <item quantity="other">%d minutos</item>
+    </plurals>
+
+    <string name="minute_second_join">" y "</string>
+
+    <plurals name="second">
+        <item quantity="one">%d segundo</item>
+        <item quantity="other">%d segundos</item>
+    </plurals>
+
+    <string name="sample_time">22 minutos y 30 segundos.</string>
+
+    <!-- Pantalla de grabaciones -->
+
+    <string name="recordings_title">Grabaciones</string>
+    <string name="settings_title">Ajustes</string>
+    <string name="recordings_loading">Leyendo el almacenamiento…</string>
+    <string name="recordings_ranges_title">Tiempo cubierto en disco</string>
+    <string name="recordings_empty">Todavía no se ha guardado ninguna grabación. Los archivos guardados aparecerán aquí.</string>
+    <string name="recordings_summary">%1$s · %2$s de audio · %3$s\n%4$s</string>
+    <string name="recordings_summary_empty">No hay nada guardado en\n%1$s</string>
+    <string name="recordings_range_line">%1$s  %2$s → %3$s\n%4$s · %5$s</string>
+    <string name="recordings_item_range">%1$s%2$s  %3$s → %4$s</string>
+    <string name="recordings_item_detail">%1$s · %2$s · %3$d kHz · %4$s</string>
+    <plurals name="recordings_file_count">
+        <item quantity="one">%d archivo</item>
+        <item quantity="other">%d archivos</item>
+    </plurals>
+    <string name="recordings_cant_open">Ninguna app instalada puede reproducir este archivo.</string>
+    <string name="recordings_cant_delete">No se pudo borrar el archivo.</string>
+    <string name="recordings_delete_title">Borrar grabación</string>
+    <string name="recordings_delete_message">¿Borrar %1$s? Esto no se puede deshacer.</string>
+    <string name="recordings_delete_confirm">Borrar</string>
+
+    <!-- Ajustes -->
+
+    <string name="audio_memory_holds">La memoria de audio está limitada a</string>
+    <string name="audio_memory_change">Puedes cambiarlo ajustando:</string>
+    <string name="option_a_used_ram">A) Memoria del sistema en uso</string>
+    <string name="option_b_audio_quality">B) Calidad de sonido</string>
+    <string name="used_ram_description">Echo y otras apps usan la memoria del sistema para guardar sus datos. Un consumo alto puede ralentizar otras apps.</string>
+    <string name="audio_quality_description">8 kHz basta para entender el habla. Las opciones superiores ofrecen distintos equilibrios entre calidad y consumo de memoria.</string>
+
+    <string name="auto_save_title">Guardado automático</string>
+    <string name="auto_save_enabled">Activado</string>
+    <string name="auto_save_disabled">Desactivado</string>
+    <string name="auto_save_description">Mientras Echo está escuchando, el contenido de la memoria de audio se escribe solo en un archivo nuevo, así no tienes que acordarte de guardarlo.</string>
+    <string name="auto_save_interval_title">Guardar cada</string>
+    <string name="auto_save_interval_description">Cada guardado automático vacía la memoria de audio, así que los archivos consecutivos se continúan sin solaparse. Un intervalo más corto significa más archivos y más pequeños.</string>
+    <plurals name="interval_minutes">
+        <item quantity="one">%d min</item>
+        <item quantity="other">%d min</item>
+    </plurals>
+    <string name="storage_location_title">Las grabaciones se guardan en</string>
+    <string name="settings_return">Volver</string>
+
+    <!-- Diálogos -->
+
+    <string name="work_default">Trabajando</string>
+    <string name="work_preparing_memory">Preparando memoria</string>
+
+    <string name="recording_done_title">Grabación lista</string>
+    <string name="recording_done_filename">Nombre del archivo:</string>
+    <string name="recording_done_directory">Carpeta:</string>
+    <string name="recording_done_runtime">Duración:</string>
+    <string name="recording_done_size">Tamaño:</string>
+
+    <string name="press_back_to_cancel">Pulsa «atrás» para cancelar</string>
+    <string name="send">Enviar</string>
+    <string name="open">Abrir</string>
+    <string name="allow">Permitir</string>
+    <string name="exit">Salir</string>
+    <string name="retry">Reintentar</string>
+
+    <string name="permission_required">Permiso necesario</string>
+    <string name="permission_required_message">Echo necesita permiso para grabar y guardar audio. Actívalo en los ajustes.</string>
+
+</resources>

@@ -1,16 +1,11 @@
 package com.copa.echo;
 
-import android.annotation.SuppressLint;
 import android.app.Activity;
-import android.app.AlertDialog;
-import android.app.Dialog;
 import android.app.Fragment;
 import android.app.Notification;
 import android.app.PendingIntent;
-import android.app.ProgressDialog;
 import android.content.ComponentName;
 import android.content.Context;
-import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.ServiceConnection;
 import android.content.pm.PackageManager;
@@ -18,11 +13,10 @@ import android.content.res.AssetManager;
 import android.content.res.Resources;
 import android.graphics.Typeface;
 import android.net.Uri;
-import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.IBinder;
-import android.view.Gravity;
+import android.text.format.DateFormat;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -30,12 +24,8 @@ import android.view.animation.Animation;
 import android.view.animation.AnimationUtils;
 import android.util.Log;
 import android.widget.Button;
-import android.widget.EditText;
-import android.widget.ImageButton;
-import android.widget.ImageView;
-import android.widget.LinearLayout;
+import android.widget.ProgressBar;
 import android.widget.TextView;
-import android.widget.Toast;
 
 import androidx.core.app.ActivityCompat;
 import androidx.core.app.NotificationCompat;
@@ -43,10 +33,7 @@ import androidx.core.app.NotificationManagerCompat;
 import androidx.core.content.FileProvider;
 
 import java.io.File;
-import java.text.SimpleDateFormat;
 import java.util.Date;
-import java.util.Locale;
-import java.util.TimeZone;
 
 import com.copa.echo.android.TimeFormat;
 import com.copa.echo.android.Views;
@@ -55,30 +42,34 @@ public class SaidItFragment extends Fragment {
 
     private static final String TAG = SaidItFragment.class.getSimpleName();
     private static final String YOUR_NOTIFICATION_CHANNEL_ID = "SaidItServiceChannel";
-    private Button record_pause_button;
-    private Button listenButton;
+    /** How often the screen refreshes itself while it is visible. */
+    private static final long REFRESH_MILLIS = 500;
 
-    ListenButtonClickListener listenButtonClickListener = new ListenButtonClickListener();
-    RecordButtonClickListener recordButtonClickListener = new RecordButtonClickListener();
+    private View statusBanner;
+    private View statusDot;
+    private TextView statusText;
+    private TextView statusHint;
 
-    private boolean isListening = true;
-    private boolean isRecording = false;
+    private TextView memorySize;
+    private TextView memoryLimit;
+    private ProgressBar memoryBar;
 
-    private LinearLayout ready_section;
-    private Button recordLastFiveMinutesButton;
-    private Button recordMaxButton;
-    private Button recordLastMinuteButton;
-    private Button recordLastThirtyMinuteButton;
-    private Button recordLastTwoHrsButton;
-    private Button recordLastSixHrsButton;
-    private TextView history_limit;
-    private TextView history_size;
-    private TextView history_size_title;
-    private TextView auto_save_flag;
+    private Button saveEverythingButton;
+    private TextView autoSaveStatus;
+    private TextView autoSaveNext;
+    private TextView lastSave;
 
-    private LinearLayout rec_section;
-    private TextView rec_indicator;
-    private TextView rec_time;
+    private Animation dotPulse;
+    /** Whether the pulsing dot is currently animating, so we only start/stop it on real changes. */
+    private boolean dotPulsing = false;
+    /** Last drawn banner state, -1 until the first refresh. */
+    private int shownState = -1;
+
+    private static final int SHOWN_STOPPED = 0;
+    private static final int SHOWN_LISTENING = 1;
+    private static final int SHOWN_RECORDING = 2;
+
+    SaidItService echo;
 
     @Override
     public void onStart() {
@@ -95,38 +86,25 @@ public class SaidItFragment extends Fragment {
         super.onStop();
         final Activity activity = getActivity();
         assert activity != null;
+        final View view = getView();
+        if (view != null) view.removeCallbacks(updater);
         activity.unbindService(echoConnection);
         echo = null;
     }
 
-    class ActivityResult {
-        final int requestCode;
-        final int resultCode;
-        final Intent data;
-
-        ActivityResult(int requestCode, int resultCode, Intent data) {
-            this.requestCode = requestCode;
-            this.resultCode = resultCode;
-            this.data = data;
-        }
-    }
-
-    private Runnable updater = new Runnable() {
+    private final Runnable updater = new Runnable() {
         @Override
         public void run() {
-            final View view = getView();
-            if (view == null) return;
+            if (getView() == null) return;
             if (echo == null) return;
             echo.getState(serviceStateCallback);
         }
     };
 
-    SaidItService echo;
-    private ServiceConnection echoConnection = new ServiceConnection() {
+    private final ServiceConnection echoConnection = new ServiceConnection() {
 
         @Override
-        public void onServiceConnected(ComponentName className,
-                                       IBinder binder) {
+        public void onServiceConnected(ComponentName className, IBinder binder) {
             Log.d(TAG, "onServiceConnected");
             SaidItService.BackgroundRecorderBinder typedBinder = (SaidItService.BackgroundRecorderBinder) binder;
             if (echo != null && echo == typedBinder.getService()) {
@@ -134,7 +112,8 @@ public class SaidItFragment extends Fragment {
                 return;
             }
             echo = typedBinder.getService();
-            getView().postOnAnimation(updater);
+            final View view = getView();
+            if (view != null) view.post(updater);
         }
 
         @Override
@@ -154,11 +133,9 @@ public class SaidItFragment extends Fragment {
     }
 
     @Override
-    public View onCreateView(LayoutInflater inflater, ViewGroup container,
-                             Bundle savedInstanceState) {
+    public View onCreateView(LayoutInflater inflater, ViewGroup container, Bundle savedInstanceState) {
 
-        View rootView = inflater.inflate(R.layout.fragment_background_recorder, container, false);
-
+        final View rootView = inflater.inflate(R.layout.fragment_background_recorder, container, false);
         if (rootView == null) return null;
 
         final Activity activity = getActivity();
@@ -170,71 +147,61 @@ public class SaidItFragment extends Fragment {
         Views.search((ViewGroup) rootView, new Views.SearchViewCallback() {
             @Override
             public void onView(View view, ViewGroup parent) {
-
                 if (view instanceof Button) {
                     final Button button = (Button) view;
                     button.setTypeface(robotoCondensedBold);
                     final int shadowColor = button.getShadowColor();
                     button.setShadowLayer(0.01f, 0, density * 2, shadowColor);
                 } else if (view instanceof TextView) {
-
-                    final TextView textView = (TextView) view;
-                    textView.setTypeface(robotoCondensedRegular);
+                    ((TextView) view).setTypeface(robotoCondensedRegular);
                 }
             }
         });
 
-        history_limit = (TextView) rootView.findViewById(R.id.history_limit);
-        history_size = (TextView) rootView.findViewById(R.id.history_size);
-        history_size_title = (TextView) rootView.findViewById(R.id.history_size_title);
-        auto_save_flag = (TextView) rootView.findViewById(R.id.auto_save_flag);
+        statusBanner = rootView.findViewById(R.id.status_banner);
+        statusDot = rootView.findViewById(R.id.status_dot);
+        statusText = (TextView) rootView.findViewById(R.id.status_text);
+        statusHint = (TextView) rootView.findViewById(R.id.status_hint);
+        statusText.setTypeface(robotoCondensedBold);
 
-        history_limit.setTypeface(robotoCondensedBold);
-        history_size.setTypeface(robotoCondensedBold);
+        memorySize = (TextView) rootView.findViewById(R.id.memory_size);
+        memoryLimit = (TextView) rootView.findViewById(R.id.memory_limit);
+        memoryBar = (ProgressBar) rootView.findViewById(R.id.memory_bar);
+        memorySize.setTypeface(robotoCondensedBold);
 
-        listenButton = (Button) rootView.findViewById(R.id.listen_button);
-        if (listenButton != null) {
-            listenButton.setOnClickListener(listenButtonClickListener);
-        }
+        saveEverythingButton = (Button) rootView.findViewById(R.id.save_everything);
+        autoSaveStatus = (TextView) rootView.findViewById(R.id.auto_save_status);
+        autoSaveNext = (TextView) rootView.findViewById(R.id.auto_save_next);
+        lastSave = (TextView) rootView.findViewById(R.id.last_save);
 
+        dotPulse = AnimationUtils.loadAnimation(activity, R.anim.dot_pulse);
+
+        // The banner sits under the status bar, so it has to make room for it itself.
         final int statusBarHeight = getStatusBarHeight();
-        listenButton.setPadding(listenButton.getPaddingLeft(), listenButton.getPaddingTop() + statusBarHeight, listenButton.getPaddingRight(), listenButton.getPaddingBottom());
-        final ViewGroup.LayoutParams layoutParams = listenButton.getLayoutParams();
-        layoutParams.height += statusBarHeight;
-        listenButton.setLayoutParams(layoutParams);
+        statusBanner.setPadding(statusBanner.getPaddingLeft(), statusBanner.getPaddingTop() + statusBarHeight,
+                statusBanner.getPaddingRight(), statusBanner.getPaddingBottom());
 
+        statusBanner.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                toggleListening();
+            }
+        });
 
-        record_pause_button = (Button) rootView.findViewById(R.id.rec_stop_button);
-        record_pause_button.setOnClickListener(recordButtonClickListener);
+        saveEverythingButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                if (echo == null) return;
+                echo.saveEverything(new PromptFileReceiver(getActivity()));
+            }
+        });
 
-        recordLastMinuteButton = (Button) rootView.findViewById(R.id.record_last_minute);
-        recordLastMinuteButton.setOnClickListener(recordButtonClickListener);
-        recordLastMinuteButton.setOnLongClickListener(recordButtonClickListener);
-
-        recordLastFiveMinutesButton = (Button) rootView.findViewById(R.id.record_last_5_minutes);
-        recordLastFiveMinutesButton.setOnClickListener(recordButtonClickListener);
-        recordLastFiveMinutesButton.setOnLongClickListener(recordButtonClickListener);
-
-        recordLastThirtyMinuteButton = (Button) rootView.findViewById(R.id.record_last_30_minutes);
-        recordLastThirtyMinuteButton.setOnClickListener(recordButtonClickListener);
-        recordLastThirtyMinuteButton.setOnLongClickListener(recordButtonClickListener);
-
-        recordLastTwoHrsButton = (Button) rootView.findViewById(R.id.record_last_2_hrs);
-        recordLastTwoHrsButton.setOnClickListener(recordButtonClickListener);
-        recordLastTwoHrsButton.setOnLongClickListener(recordButtonClickListener);
-
-        recordLastSixHrsButton = (Button) rootView.findViewById(R.id.record_last_6_hrs);
-        recordLastSixHrsButton.setOnClickListener(recordButtonClickListener);
-        recordLastSixHrsButton.setOnLongClickListener(recordButtonClickListener);
-
-        recordMaxButton = (Button) rootView.findViewById(R.id.record_last_max);
-        recordMaxButton.setOnClickListener(recordButtonClickListener);
-        recordMaxButton.setOnLongClickListener(recordButtonClickListener);
-
-        ready_section = (LinearLayout) rootView.findViewById(R.id.ready_section);
-        rec_section = (LinearLayout) rootView.findViewById(R.id.rec_section);
-        rec_indicator = (TextView) rootView.findViewById(R.id.rec_indicator);
-        rec_time = (TextView) rootView.findViewById(R.id.rec_time);
+        rootView.findViewById(R.id.recordings_button).setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                startActivity(new Intent(activity, RecordingsActivity.class));
+            }
+        });
 
         rootView.findViewById(R.id.settings_button).setOnClickListener(new View.OnClickListener() {
             @Override
@@ -242,179 +209,137 @@ public class SaidItFragment extends Fragment {
                 startActivity(new Intent(activity, SettingsActivity.class));
             }
         });
-        serviceStateCallback.state(isListening, isRecording, 0, 0, 0);
+
         return rootView;
     }
 
-    private SaidItService.StateCallback serviceStateCallback = new SaidItService.StateCallback() {
-        @Override
-        public void state(final boolean listeningEnabled, final boolean recording, final float memorized, final float totalMemory, final float recorded) {
-            final Activity activity = getActivity();
-            if (activity == null) return;
-            final Resources resources = activity.getResources();
-            if ((isRecording != recording) || (isListening != listeningEnabled)) {
-                if (recording != isRecording) {
-                    isRecording = recording;
-                    if (recording) {
-                        rec_section.setVisibility(View.VISIBLE);
-                    } else {
-                        rec_section.setVisibility(View.GONE);
-                    }
-                }
-
-                if (listeningEnabled != isListening) {
-                    isListening = listeningEnabled;
-                    if (listeningEnabled) {
-                        listenButton.setText(R.string.listening_enabled_disable);
-                        listenButton.setBackgroundResource(R.drawable.top_green_button);
-                        listenButton.setShadowLayer(0.01f, 0, resources.getDimensionPixelOffset(R.dimen.shadow_offset), resources.getColor(R.color.dark_green));
-                    } else {
-                        listenButton.setText(R.string.listening_disabled_enable);
-                        listenButton.setBackgroundResource(R.drawable.top_gray_button);
-                        listenButton.setShadowLayer(0.01f, 0, resources.getDimensionPixelOffset(R.dimen.shadow_offset), 0xff666666);
-                    }
-                }
-
-                if (listeningEnabled && !recording) {
-                    ready_section.setVisibility(View.VISIBLE);
+    private void toggleListening() {
+        if (echo == null) return;
+        echo.getState(new SaidItService.StateCallback() {
+            @Override
+            public void state(SaidItService.State state) {
+                if (echo == null) return;
+                if (state.listeningEnabled) {
+                    echo.disableListening();
                 } else {
-                    ready_section.setVisibility(View.GONE);
-                }
-
-            }
-
-            if (echo != null && auto_save_flag != null) {
-                auto_save_flag.setText(echo.isAutoSaveEnabled() ? R.string.auto_save_enabled : R.string.auto_save_disabled);
-            }
-
-            TimeFormat.naturalLanguage(resources, totalMemory, timeFormatResult);
-
-            if (!history_limit.getText().equals(timeFormatResult.text)) {
-                history_limit.setText(timeFormatResult.text);
-            }
-
-            TimeFormat.naturalLanguage(resources, memorized, timeFormatResult);
-
-            if (!history_size.getText().equals(timeFormatResult.text)) {
-                history_size_title.setText(resources.getQuantityText(R.plurals.history_size_title, timeFormatResult.count));
-                history_size.setText(timeFormatResult.text);
-                recordMaxButton.setText(TimeFormat.shortTimer(memorized));
-            }
-
-            TimeFormat.naturalLanguage(resources, recorded, timeFormatResult);
-
-            if (!rec_time.getText().equals(timeFormatResult.text)) {
-                rec_indicator.setText(resources.getQuantityText(R.plurals.recorded, timeFormatResult.count));
-                rec_time.setText(timeFormatResult.text);
-            }
-
-            history_size.postOnAnimationDelayed(updater, 100);
-        }
-    };
-
-    final TimeFormat.Result timeFormatResult = new TimeFormat.Result();
-
-
-    private class ListenButtonClickListener implements View.OnClickListener {
-
-        @SuppressLint("ValidFragment")
-        final WorkingDialog dialog = new WorkingDialog();
-
-        public ListenButtonClickListener() {
-            dialog.setDescriptionStringId(R.string.work_preparing_memory);
-        }
-
-        @Override
-        public void onClick(View v) {
-            echo.getState(new SaidItService.StateCallback() {
-                @Override
-                public void state(final boolean listeningEnabled, boolean recording, float memorized, float totalMemory, float recorded) {
-                    if (listeningEnabled) {
-                        echo.disableListening();
-                    } else {
-                        dialog.show(getFragmentManager(), "Preparing memory");
-
-                        new Handler().post(new Runnable() {
-                            @Override
-                            public void run() {
-                                echo.enableListening();
-                                echo.getState(new SaidItService.StateCallback() {
-                                    @Override
-                                    public void state(boolean listeningEnabled, boolean recording, float memorized, float totalMemory, float recorded) {
-                                        dialog.dismiss();
-                                    }
-                                });
-                            }
-                        });
-                    }
-                }
-            });
-        }
-    }
-
-    private class RecordButtonClickListener implements View.OnClickListener, View.OnLongClickListener {
-
-        @Override
-        public void onClick(final View v) {
-            record(v, false);
-        }
-
-        @Override
-        public boolean onLongClick(final View v) {
-            record(v, true);
-            return true;
-        }
-
-        public void record(final View button, final boolean keepRecording) {
-            echo.getState(new SaidItService.StateCallback() {
-                @Override
-                public void state(final boolean listeningEnabled, final boolean recording, float memorized, float totalMemory, float recorded) {
-                    getActivity().runOnUiThread(new Runnable() {
+                    final WorkingDialog dialog = new WorkingDialog();
+                    dialog.setDescriptionStringId(R.string.work_preparing_memory);
+                    dialog.show(getFragmentManager(), "Preparing memory");
+                    new Handler().post(new Runnable() {
                         @Override
                         public void run() {
-                            if (recording) {
-                                echo.stopRecording(new PromptFileReceiver(getActivity()),"");
-                            } else {
-                                ProgressDialog pd = new ProgressDialog(getActivity());
-                                pd.setMessage("Recording...");
-                                pd.show();
-                                final float seconds = getPrependedSeconds(button);
-                                if (keepRecording) {
-                                    echo.startRecording(seconds);
-                                } else {
-                                    // Generate automatic filename with format Ymd_his
-                                    TimeZone timeZoneLocal = TimeZone.getDefault();
-                                    SimpleDateFormat sdf = new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US);
-                                    sdf.setTimeZone(timeZoneLocal);
-                                    String autoFileName = sdf.format(new Date());
-                                    echo.dumpRecording(seconds, new PromptFileReceiver(getActivity()), autoFileName);
-                                    pd.dismiss();
+                            if (echo == null) return;
+                            echo.enableListening();
+                            echo.getState(new SaidItService.StateCallback() {
+                                @Override
+                                public void state(SaidItService.State state) {
+                                    if (dialog.isVisible()) dialog.dismiss();
                                 }
-                            }
+                            });
                         }
                     });
                 }
-            });
+            }
+        });
+    }
+
+    private final SaidItService.StateCallback serviceStateCallback = new SaidItService.StateCallback() {
+        @Override
+        public void state(SaidItService.State state) {
+            final Activity activity = getActivity();
+            final View view = getView();
+            if (activity == null || view == null) return;
+            final Resources resources = activity.getResources();
+
+            drawBanner(resources, state);
+            drawMemory(resources, state);
+            drawAutoSave(resources, activity, state);
+
+            view.postDelayed(updater, REFRESH_MILLIS);
+        }
+    };
+
+    private void drawBanner(Resources resources, SaidItService.State state) {
+        final int wanted = state.recording ? SHOWN_RECORDING
+                : (state.listeningEnabled ? SHOWN_LISTENING : SHOWN_STOPPED);
+        if (wanted == shownState) return;
+        shownState = wanted;
+
+        switch (wanted) {
+            case SHOWN_RECORDING:
+                statusBanner.setBackgroundColor(resources.getColor(R.color.dark_red));
+                statusText.setText(R.string.status_recording_to_file);
+                statusHint.setText(R.string.status_hint_stop);
+                break;
+            case SHOWN_LISTENING:
+                statusBanner.setBackgroundColor(resources.getColor(R.color.dark_green));
+                statusText.setText(R.string.status_listening);
+                statusHint.setText(R.string.status_hint_stop);
+                break;
+            default:
+                statusBanner.setBackgroundColor(resources.getColor(R.color.gray_6));
+                statusText.setText(R.string.status_stopped);
+                statusHint.setText(R.string.status_hint_start);
+                break;
         }
 
-        float getPrependedSeconds(View button) {
-            switch (button.getId()) {
-                case R.id.record_last_minute:
-                    return 60;
-                case R.id.record_last_5_minutes:
-                    return 60 * 5;
-                case R.id.record_last_30_minutes:
-                    return 60 * 30;
-                case R.id.record_last_2_hrs:
-                    return 60 * 60 * 2;
-                case R.id.record_last_6_hrs:
-                    return 60 * 60 * 6;
-                case R.id.record_last_max:
-                    return 60 * 60 * 24 * 365;
+        final boolean shouldPulse = (wanted != SHOWN_STOPPED);
+        if (shouldPulse != dotPulsing) {
+            dotPulsing = shouldPulse;
+            if (shouldPulse) {
+                statusDot.startAnimation(dotPulse);
+            } else {
+                statusDot.clearAnimation();
             }
-            return 0;
+        }
+
+        // Nothing is being captured while stopped, so there is nothing to save either.
+        final boolean canSave = (wanted != SHOWN_STOPPED);
+        saveEverythingButton.setEnabled(canSave);
+        saveEverythingButton.setAlpha(canSave ? 1f : 0.4f);
+    }
+
+    private void drawMemory(Resources resources, SaidItService.State state) {
+        TimeFormat.naturalLanguage(resources, state.memorized, timeFormatResult);
+        if (!timeFormatResult.text.equals(memorySize.getText().toString())) {
+            memorySize.setText(timeFormatResult.text);
+        }
+
+        TimeFormat.naturalLanguage(resources, state.totalMemory, timeFormatResult);
+        final String limit = resources.getString(R.string.memory_limit, timeFormatResult.text);
+        if (!limit.equals(memoryLimit.getText().toString())) {
+            memoryLimit.setText(limit);
+        }
+
+        final int progress = (state.totalMemory > 0)
+                ? (int) (1000 * Math.min(1f, state.memorized / state.totalMemory)) : 0;
+        memoryBar.setProgress(progress);
+    }
+
+    private void drawAutoSave(Resources resources, Context context, SaidItService.State state) {
+        if (state.autoSaveEnabled) {
+            autoSaveStatus.setText(resources.getQuantityString(R.plurals.auto_save_enabled_status,
+                    state.autoSaveIntervalMinutes, state.autoSaveIntervalMinutes));
+            if (state.nextAutoSaveInMillis >= 0) {
+                autoSaveNext.setText(resources.getString(R.string.auto_save_next,
+                        TimeFormat.shortTimer(state.nextAutoSaveInMillis / 1000f)));
+            } else {
+                autoSaveNext.setText(R.string.auto_save_paused);
+            }
+        } else {
+            autoSaveStatus.setText(R.string.auto_save_disabled_status);
+            autoSaveNext.setText("");
+        }
+
+        if (state.lastSaveMillis > 0) {
+            final String time = DateFormat.getTimeFormat(context).format(new Date(state.lastSaveMillis));
+            lastSave.setText(resources.getString(R.string.last_save, time));
+        } else {
+            lastSave.setText("");
         }
     }
+
+    final TimeFormat.Result timeFormatResult = new TimeFormat.Result();
 
     static Notification buildNotificationForFile(Context context, File outFile) {
         Intent intent = new Intent(Intent.ACTION_VIEW);
@@ -438,7 +363,7 @@ public class SaidItFragment extends Fragment {
 
     static class NotifyFileReceiver implements SaidItService.WavFileReceiver {
 
-        private Context context;
+        private final Context context;
 
         public NotifyFileReceiver(Context context) {
             this.context = context;
@@ -448,13 +373,6 @@ public class SaidItFragment extends Fragment {
         public void fileReady(final File file, float runtime) {
             NotificationManagerCompat notificationManager = NotificationManagerCompat.from(context);
             if (ActivityCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-                // TODO: Consider calling
-                //    ActivityCompat#requestPermissions
-                // here to request the missing permissions, and then overriding
-                //   public void onRequestPermissionsResult(int requestCode, String[] permissions,
-                //                                          int[] grantResults)
-                // to handle the case where the user grants the permission. See the documentation
-                // for ActivityCompat#requestPermissions for more details.
                 return;
             }
             notificationManager.notify(43, buildNotificationForFile(context, file));
@@ -463,7 +381,7 @@ public class SaidItFragment extends Fragment {
 
     static class PromptFileReceiver implements SaidItService.WavFileReceiver {
 
-        private Activity activity;
+        private final Activity activity;
 
         public PromptFileReceiver(Activity activity) {
             this.activity = activity;
@@ -471,6 +389,7 @@ public class SaidItFragment extends Fragment {
 
         @Override
         public void fileReady(final File file, float runtime) {
+            if (activity == null || activity.isFinishing()) return;
             new RecordingDoneDialog()
                     .setFile(file)
                     .setRuntime(runtime)

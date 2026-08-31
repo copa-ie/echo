@@ -8,7 +8,6 @@
     <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
-    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
 
     <supports-screens
         android:largeScreens="true"
@@ -58,12 +57,13 @@
             </intent-filter>
         </receiver>
 
-        <receiver android:name=".AutoSaveReceiver"
-            android:exported="false">
-            <intent-filter>
-                <action android:name="com.copa.echo.AUTO_SAVE" />
-            </intent-filter>
-        </receiver>
+        <activity
+            android:name=".RecordingsActivity"
+            android:parentActivityName=".SaidItActivity" >
+            <meta-data
+                android:name="android.support.PARENT_ACTIVITY"
+                android:value="SaidItActivity" />
+        </activity>
 
         <activity
             android:name=".SettingsActivity"
