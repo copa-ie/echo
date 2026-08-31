@@ -204,4 +204,92 @@
     </plurals>
     <string name="storage_location_title">Recordings are saved in</string>
 
+    <!-- Health warnings on the main screen -->
+
+    <string name="warning_not_capturing">No audio is arriving from the microphone, so nothing is being kept. Open Diagnostics and use Restart capture; if it keeps happening, another app may be holding the microphone.</string>
+    <string name="warning_error">Something went wrong: %1$s</string>
+    <string name="warning_interval_too_long">The save interval (%1$d min) is longer than audio memory holds (%2$s), so audio would be overwritten before it is saved. Echo saves early to avoid losing it.</string>
+
+    <plurals name="auto_save_count">
+        <item quantity="one">%d automatic save so far</item>
+        <item quantity="other">%d automatic saves so far</item>
+    </plurals>
+    <string name="auto_save_count_none">No automatic save has run yet</string>
+    <string name="last_save_named">Last saved at %1$s · %2$s</string>
+
+    <!-- Low power mode -->
+
+    <string name="low_power_title">Low power mode</string>
+    <string name="low_power_on">Low power: ON</string>
+    <string name="low_power_off">Low power: off</string>
+    <string name="low_power_hint">Records at 8 kHz: worse quality, a sixth of the data and far fewer wake-ups.</string>
+    <string name="low_power_description">For when battery matters more than fidelity. Capture drops to 8 kHz, which is enough to understand speech, so the microphone buffer lasts six times longer between wake-ups, files are a sixth of the size and this screen refreshes less often. Switching it off restores the previous quality. Whatever is in memory is saved before the change, since audio memory cannot survive a format change.</string>
+    <string name="notification_low_power_suffix">· low power</string>
+
+    <!-- Diagnostics -->
+
+    <string name="diagnostics_title">Diagnostics</string>
+    <string name="diagnostics_verdict_ok">AUDIO IS BEING CAPTURED AND SAVED</string>
+    <string name="diagnostics_verdict_bad">AUDIO IS NOT BEING SAVED</string>
+    <string name="diagnostics_verdict_stopped">ECHO IS STOPPED</string>
+    <string name="diagnostics_yes">yes</string>
+    <string name="diagnostics_no">no</string>
+    <string name="diagnostics_never">never</string>
+    <string name="diagnostics_checking">checking…</string>
+    <string name="diagnostics_unknown">unknown</string>
+    <string name="diagnostics_not_scheduled">not scheduled</string>
+    <string name="diagnostics_mic">Microphone permission</string>
+    <string name="diagnostics_notifications">Notification permission</string>
+    <string name="diagnostics_all_files">All files access</string>
+    <string name="diagnostics_storage_writable">Write test in the folder</string>
+    <string name="diagnostics_storage_path">Folder</string>
+    <string name="diagnostics_storage_private_note">Public storage was not writable, so app storage is being used. Files are still readable over USB, under Android/data.</string>
+    <string name="diagnostics_free_space">Free space</string>
+    <string name="diagnostics_sample_rate">Sample rate</string>
+    <string name="diagnostics_khz">%1$.1f kHz</string>
+    <string name="diagnostics_low_power">Low power mode</string>
+    <string name="diagnostics_capturing">Audio arriving</string>
+    <string name="diagnostics_captured">Captured this run</string>
+    <string name="diagnostics_last_read">Last sample</string>
+    <string name="diagnostics_seconds_ago">%1$d s ago</string>
+    <string name="diagnostics_capture_stalled_note">The capture loop is alive but the microphone is returning nothing. After a reboot Android will not give a background service the microphone, so open the app once.</string>
+    <string name="diagnostics_read_errors">Microphone read errors</string>
+    <string name="diagnostics_memory">Memory used</string>
+    <string name="diagnostics_auto_save">Automatic save</string>
+    <string name="diagnostics_interval">Interval</string>
+    <string name="diagnostics_minutes">%1$d min</string>
+    <string name="diagnostics_next_save">Next save in</string>
+    <string name="diagnostics_saves_done">Automatic saves this run</string>
+    <string name="diagnostics_early_saves">Early saves (memory full)</string>
+    <string name="diagnostics_interval_too_long">The interval is longer than memory holds, so Echo saves early to avoid dropping audio. Shorten the interval or raise the memory size.</string>
+    <string name="diagnostics_last_save">Last save</string>
+    <string name="diagnostics_battery_unrestricted">Exempt from battery optimization</string>
+    <string name="diagnostics_last_error">Last error</string>
+    <string name="diagnostics_save_now">Save now</string>
+    <string name="diagnostics_restart_capture">Restart capture</string>
+    <string name="diagnostics_battery_settings">Battery optimization settings</string>
+    <string name="diagnostics_saved_toast">Saved %1$s</string>
+    <string name="diagnostics_no_settings_screen">This device has no battery optimization screen.</string>
+    <string name="diagnostics_log_title">Recent events</string>
+    <string name="diagnostics_log_empty">Nothing has happened yet.</string>
+
+    <!-- Event log -->
+
+    <string name="event_service_started">Service started</string>
+    <string name="event_service_stopped">Service stopped</string>
+    <string name="event_listening_started">Capture started at %1$.1f kHz</string>
+    <string name="event_listening_stopped">Capture stopped</string>
+    <string name="event_saved">Saved %1$s (%2$s)</string>
+    <string name="event_saved_memory_full">Saved early: audio memory was nearly full</string>
+    <string name="event_storage_fallback">Using app storage: %1$s</string>
+    <string name="event_low_power_on">Low power mode on, dropping to 8 kHz</string>
+    <string name="event_low_power_off">Low power mode off, back to %1$.1f kHz</string>
+
+    <!-- Errors -->
+
+    <string name="error_mic_unavailable">The microphone could not be opened. Another app may be using it, or the permission was revoked.</string>
+    <string name="error_audio_read">Microphone read error (%1$d), retrying</string>
+    <string name="error_cant_write_dir">Cannot write into %1$s</string>
+    <string name="error_cant_go_foreground">Android refused to let Echo run in the foreground. It has to be started from the app, not from the background.</string>
+
 </resources>

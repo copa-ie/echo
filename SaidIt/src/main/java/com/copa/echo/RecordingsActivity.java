@@ -127,13 +127,16 @@ public class RecordingsActivity extends Activity {
         });
     }
 
-    /** Reads the directory off the UI thread, since it can hold hundreds of files. */
+    /** Reads the directories off the UI thread, since they can hold hundreds of files. */
     private void reload() {
-        final File dir = SaidItService.recordingsDir(this);
+        // Recordings may sit in a directory the app used before storage access changed, so look
+        // in every candidate rather than only the one being written to now.
+        final List<File> dirs = Storage.candidates(this);
+        final File dir = Storage.resolve(this);
         new Thread(new Runnable() {
             @Override
             public void run() {
-                final List<Recordings.Entry> scanned = Recordings.scan(dir);
+                final List<Recordings.Entry> scanned = Recordings.scanAll(dirs);
                 handler.post(new Runnable() {
                     @Override
                     public void run() {

@@ -125,4 +125,92 @@
     <string name="permission_required">Permiso necesario</string>
     <string name="permission_required_message">Echo necesita permiso para grabar y guardar audio. Actívalo en los ajustes.</string>
 
+    <!-- Avisos de salud en la pantalla principal -->
+
+    <string name="warning_not_capturing">No llega audio del micrófono, así que no se está guardando nada. Abre Diagnóstico y usa Reiniciar captura; si sigue pasando, puede que otra app tenga el micrófono ocupado.</string>
+    <string name="warning_error">Algo ha fallado: %1$s</string>
+    <string name="warning_interval_too_long">El intervalo de guardado (%1$d min) es mayor que lo que cabe en memoria (%2$s), así que el audio se sobrescribiría antes de guardarse. Echo guarda antes de tiempo para no perderlo.</string>
+
+    <plurals name="auto_save_count">
+        <item quantity="one">%d guardado automático hasta ahora</item>
+        <item quantity="other">%d guardados automáticos hasta ahora</item>
+    </plurals>
+    <string name="auto_save_count_none">Todavía no se ha ejecutado ningún guardado automático</string>
+    <string name="last_save_named">Último guardado a las %1$s · %2$s</string>
+
+    <!-- Modo de bajo consumo -->
+
+    <string name="low_power_title">Modo de bajo consumo</string>
+    <string name="low_power_on">Bajo consumo: ACTIVADO</string>
+    <string name="low_power_off">Bajo consumo: desactivado</string>
+    <string name="low_power_hint">Graba a 8 kHz: peor calidad, un sexto de los datos y muchos menos despertares del CPU.</string>
+    <string name="low_power_description">Para cuando la batería importa más que la fidelidad. La captura baja a 8 kHz, suficiente para entender el habla, así que el búfer del micrófono dura seis veces más entre despertares, los archivos ocupan un sexto y esta pantalla se refresca menos a menudo. Al desactivarlo se recupera la calidad anterior. Lo que haya en memoria se guarda antes del cambio, porque la memoria de audio no puede sobrevivir a un cambio de formato.</string>
+    <string name="notification_low_power_suffix">· bajo consumo</string>
+
+    <!-- Diagnóstico -->
+
+    <string name="diagnostics_title">Diagnóstico</string>
+    <string name="diagnostics_verdict_ok">SE ESTÁ CAPTURANDO Y GUARDANDO AUDIO</string>
+    <string name="diagnostics_verdict_bad">NO SE ESTÁ GUARDANDO AUDIO</string>
+    <string name="diagnostics_verdict_stopped">ECHO ESTÁ DETENIDO</string>
+    <string name="diagnostics_yes">sí</string>
+    <string name="diagnostics_no">no</string>
+    <string name="diagnostics_never">nunca</string>
+    <string name="diagnostics_checking">comprobando…</string>
+    <string name="diagnostics_unknown">desconocido</string>
+    <string name="diagnostics_not_scheduled">sin programar</string>
+    <string name="diagnostics_mic">Permiso de micrófono</string>
+    <string name="diagnostics_notifications">Permiso de notificaciones</string>
+    <string name="diagnostics_all_files">Acceso a todos los archivos</string>
+    <string name="diagnostics_storage_writable">Prueba de escritura en la carpeta</string>
+    <string name="diagnostics_storage_path">Carpeta</string>
+    <string name="diagnostics_storage_private_note">No se pudo escribir en el almacenamiento público, así que se usa el de la app. Los archivos siguen siendo accesibles por USB, dentro de Android/data.</string>
+    <string name="diagnostics_free_space">Espacio libre</string>
+    <string name="diagnostics_sample_rate">Frecuencia de muestreo</string>
+    <string name="diagnostics_khz">%1$.1f kHz</string>
+    <string name="diagnostics_low_power">Modo de bajo consumo</string>
+    <string name="diagnostics_capturing">Llega audio</string>
+    <string name="diagnostics_captured">Capturado en esta sesión</string>
+    <string name="diagnostics_last_read">Última muestra</string>
+    <string name="diagnostics_seconds_ago">hace %1$d s</string>
+    <string name="diagnostics_capture_stalled_note">El bucle de captura está vivo pero el micrófono no devuelve nada. Tras un reinicio Android no da el micrófono a un servicio arrancado en segundo plano, así que abre la app una vez.</string>
+    <string name="diagnostics_read_errors">Errores de lectura del micrófono</string>
+    <string name="diagnostics_memory">Memoria usada</string>
+    <string name="diagnostics_auto_save">Guardado automático</string>
+    <string name="diagnostics_interval">Intervalo</string>
+    <string name="diagnostics_minutes">%1$d min</string>
+    <string name="diagnostics_next_save">Próximo guardado en</string>
+    <string name="diagnostics_saves_done">Guardados automáticos en esta sesión</string>
+    <string name="diagnostics_early_saves">Guardados anticipados (memoria llena)</string>
+    <string name="diagnostics_interval_too_long">El intervalo es mayor que lo que cabe en memoria, así que Echo guarda antes de tiempo para no descartar audio. Acorta el intervalo o amplía la memoria.</string>
+    <string name="diagnostics_last_save">Último guardado</string>
+    <string name="diagnostics_battery_unrestricted">Exento de la optimización de batería</string>
+    <string name="diagnostics_last_error">Último error</string>
+    <string name="diagnostics_save_now">Guardar ahora</string>
+    <string name="diagnostics_restart_capture">Reiniciar captura</string>
+    <string name="diagnostics_battery_settings">Ajustes de optimización de batería</string>
+    <string name="diagnostics_saved_toast">Guardado %1$s</string>
+    <string name="diagnostics_no_settings_screen">Este dispositivo no tiene pantalla de optimización de batería.</string>
+    <string name="diagnostics_log_title">Eventos recientes</string>
+    <string name="diagnostics_log_empty">Todavía no ha pasado nada.</string>
+
+    <!-- Registro de eventos -->
+
+    <string name="event_service_started">Servicio iniciado</string>
+    <string name="event_service_stopped">Servicio detenido</string>
+    <string name="event_listening_started">Captura iniciada a %1$.1f kHz</string>
+    <string name="event_listening_stopped">Captura detenida</string>
+    <string name="event_saved">Guardado %1$s (%2$s)</string>
+    <string name="event_saved_memory_full">Guardado anticipado: la memoria de audio estaba casi llena</string>
+    <string name="event_storage_fallback">Usando el almacenamiento de la app: %1$s</string>
+    <string name="event_low_power_on">Modo de bajo consumo activado, bajando a 8 kHz</string>
+    <string name="event_low_power_off">Modo de bajo consumo desactivado, volviendo a %1$.1f kHz</string>
+
+    <!-- Errores -->
+
+    <string name="error_mic_unavailable">No se pudo abrir el micrófono. Puede que otra app lo esté usando o que se haya revocado el permiso.</string>
+    <string name="error_audio_read">Error de lectura del micrófono (%1$d), reintentando</string>
+    <string name="error_cant_write_dir">No se puede escribir en %1$s</string>
+    <string name="error_cant_go_foreground">Android no ha permitido que Echo se ejecute en primer plano. Hay que arrancarlo desde la app, no desde segundo plano.</string>
+
 </resources>

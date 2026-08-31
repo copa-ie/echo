@@ -56,11 +56,27 @@ public class Recordings {
         }
     }
 
+    /** Recordings found across every given directory, oldest first. */
+    public static List<Entry> scanAll(List<File> dirs) {
+        final List<Entry> entries = new ArrayList<Entry>();
+        for (File dir : dirs) {
+            collect(dir, entries);
+        }
+        sort(entries);
+        return entries;
+    }
+
     /** Recordings found on disk, oldest first. */
     public static List<Entry> scan(File dir) {
         final List<Entry> entries = new ArrayList<Entry>();
+        collect(dir, entries);
+        sort(entries);
+        return entries;
+    }
+
+    private static void collect(File dir, List<Entry> entries) {
         final File[] files = dir.listFiles();
-        if (files == null) return entries;
+        if (files == null) return;
 
         for (File file : files) {
             if (!file.isFile()) continue;
@@ -68,14 +84,15 @@ public class Recordings {
             final Entry entry = readEntry(file);
             if (entry != null) entries.add(entry);
         }
+    }
 
+    private static void sort(List<Entry> entries) {
         Collections.sort(entries, new Comparator<Entry>() {
             @Override
             public int compare(Entry a, Entry b) {
                 return Long.compare(a.startMillis, b.startMillis);
             }
         });
-        return entries;
     }
 
     private static Entry readEntry(File file) {

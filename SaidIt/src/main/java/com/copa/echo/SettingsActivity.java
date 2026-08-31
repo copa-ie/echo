@@ -34,6 +34,7 @@ public class SettingsActivity extends Activity {
     private final QualityOnClickListener qualityClickListener = new QualityOnClickListener();
     private final AutoSaveToggleClickListener autoSaveToggleClickListener = new AutoSaveToggleClickListener();
     private final AutoSaveIntervalClickListener autoSaveIntervalClickListener = new AutoSaveIntervalClickListener();
+    private final LowPowerToggleClickListener lowPowerToggleClickListener = new LowPowerToggleClickListener();
 
     /** Selectable automatic save intervals, in minutes, paired with the buttons below. */
     private static final int[] INTERVAL_MINUTES = { 1, 5, 15, 30, 60 };
@@ -91,6 +92,7 @@ public class SettingsActivity extends Activity {
 
         highlightButtons();
         syncAutoSaveUI();
+        syncLowPowerUI();
     }
 
     private void syncAutoSaveUI() {
@@ -112,6 +114,21 @@ public class SettingsActivity extends Activity {
         }
 
         ((TextView) findViewById(R.id.storage_path)).setText(service.getRecordingsDir().getAbsolutePath());
+    }
+
+    private void syncLowPowerUI() {
+        if (service == null) return;
+        final boolean lowPower = service.isLowPowerEnabled();
+        final Button toggle = (Button) findViewById(R.id.low_power_toggle);
+        toggle.setText(lowPower ? R.string.low_power_on : R.string.low_power_off);
+        toggle.setBackgroundResource(lowPower ? R.drawable.green_button : R.drawable.gray_button);
+
+        // Low power mode drives the sample rate, so the quality buttons would only lie.
+        for (int buttonId : new int[]{ R.id.quality_8kHz, R.id.quality_16kHz, R.id.quality_48kHz }) {
+            final View button = findViewById(buttonId);
+            button.setEnabled(!lowPower);
+            button.setAlpha(lowPower ? 0.4f : 1f);
+        }
     }
 
     void highlightButtons() {
@@ -191,6 +208,7 @@ public class SettingsActivity extends Activity {
         root.findViewById(R.id.memory_medium).setOnClickListener(memoryClickListener);
         root.findViewById(R.id.memory_high).setOnClickListener(memoryClickListener);
         root.findViewById(R.id.auto_save_toggle).setOnClickListener(autoSaveToggleClickListener);
+        root.findViewById(R.id.low_power_toggle).setOnClickListener(lowPowerToggleClickListener);
         for (int buttonId : INTERVAL_BUTTONS) {
             root.findViewById(buttonId).setOnClickListener(autoSaveIntervalClickListener);
         }
@@ -311,6 +329,16 @@ public class SettingsActivity extends Activity {
             if (service == null) return;
             service.setAutoSaveEnabled(!service.isAutoSaveEnabled());
             syncAutoSaveUI();
+        }
+    }
+
+    private class LowPowerToggleClickListener implements View.OnClickListener {
+        @Override
+        public void onClick(View v) {
+            if (service == null) return;
+            service.setLowPowerEnabled(!service.isLowPowerEnabled());
+            syncLowPowerUI();
+            highlightButtons();
         }
     }
 

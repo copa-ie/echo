@@ -44,6 +44,8 @@ public class SaidItFragment extends Fragment {
     private static final String YOUR_NOTIFICATION_CHANNEL_ID = "SaidItServiceChannel";
     /** How often the screen refreshes itself while it is visible. */
     private static final long REFRESH_MILLIS = 500;
+    /** Low power mode polls the service less often, since every poll wakes the audio thread. */
+    private static final long REFRESH_MILLIS_LOW_POWER = 2000;
 
     private View statusBanner;
     private View statusDot;
@@ -57,7 +59,10 @@ public class SaidItFragment extends Fragment {
     private Button saveEverythingButton;
     private TextView autoSaveStatus;
     private TextView autoSaveNext;
+    private TextView autoSaveCount;
     private TextView lastSave;
+    private TextView warningBox;
+    private Button lowPowerButton;
 
     private Animation dotPulse;
     /** Whether the pulsing dot is currently animating, so we only start/stop it on real changes. */
@@ -172,7 +177,10 @@ public class SaidItFragment extends Fragment {
         saveEverythingButton = (Button) rootView.findViewById(R.id.save_everything);
         autoSaveStatus = (TextView) rootView.findViewById(R.id.auto_save_status);
         autoSaveNext = (TextView) rootView.findViewById(R.id.auto_save_next);
+        autoSaveCount = (TextView) rootView.findViewById(R.id.auto_save_count);
         lastSave = (TextView) rootView.findViewById(R.id.last_save);
+        warningBox = (TextView) rootView.findViewById(R.id.warning_box);
+        lowPowerButton = (Button) rootView.findViewById(R.id.low_power_button);
 
         dotPulse = AnimationUtils.loadAnimation(activity, R.anim.dot_pulse);
 
@@ -193,6 +201,21 @@ public class SaidItFragment extends Fragment {
             public void onClick(View v) {
                 if (echo == null) return;
                 echo.saveEverything(new PromptFileReceiver(getActivity()));
+            }
+        });
+
+        lowPowerButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                if (echo == null) return;
+                echo.setLowPowerEnabled(!echo.isLowPowerEnabled());
+            }
+        });
+
+        rootView.findViewById(R.id.diagnostics_button).setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                startActivity(new Intent(activity, DiagnosticsActivity.class));
             }
         });
 
@@ -252,10 +275,12 @@ public class SaidItFragment extends Fragment {
             final Resources resources = activity.getResources();
 
             drawBanner(resources, state);
+            drawWarning(resources, state);
             drawMemory(resources, state);
             drawAutoSave(resources, activity, state);
+            drawLowPower(state);
 
-            view.postDelayed(updater, REFRESH_MILLIS);
+            view.postDelayed(updater, state.lowPower ? REFRESH_MILLIS_LOW_POWER : REFRESH_MILLIS);
         }
     };
 
@@ -299,6 +324,36 @@ public class SaidItFragment extends Fragment {
         saveEverythingButton.setAlpha(canSave ? 1f : 0.4f);
     }
 
+    /**
+     * The one thing the old build could not tell you: whether saving is actually working.
+     * Anything that stops audio from being kept shows up here in words.
+     */
+    private void drawWarning(Resources resources, SaidItService.State state) {
+        String message = null;
+        if (state.listeningEnabled) {
+            if (!state.capturing) {
+                message = resources.getString(R.string.warning_not_capturing);
+            } else if (state.lastError != null) {
+                message = resources.getString(R.string.warning_error, state.lastError);
+            } else if (state.intervalExceedsMemory) {
+                message = resources.getString(R.string.warning_interval_too_long,
+                        state.autoSaveIntervalMinutes, TimeFormat.shortTimer(state.totalMemory));
+            }
+        }
+
+        if (message == null) {
+            if (warningBox.getVisibility() != View.GONE) warningBox.setVisibility(View.GONE);
+            return;
+        }
+        if (!message.equals(warningBox.getText().toString())) warningBox.setText(message);
+        if (warningBox.getVisibility() != View.VISIBLE) warningBox.setVisibility(View.VISIBLE);
+    }
+
+    private void drawLowPower(SaidItService.State state) {
+        lowPowerButton.setText(state.lowPower ? R.string.low_power_on : R.string.low_power_off);
+        lowPowerButton.setBackgroundResource(state.lowPower ? R.drawable.green_button : R.drawable.gray_button);
+    }
+
     private void drawMemory(Resources resources, SaidItService.State state) {
         TimeFormat.naturalLanguage(resources, state.memorized, timeFormatResult);
         if (!timeFormatResult.text.equals(memorySize.getText().toString())) {
@@ -331,9 +386,20 @@ public class SaidItFragment extends Fragment {
             autoSaveNext.setText("");
         }
 
+        if (state.autoSaveCount > 0) {
+            autoSaveCount.setText(resources.getQuantityString(R.plurals.auto_save_count,
+                    state.autoSaveCount, state.autoSaveCount));
+        } else if (state.autoSaveEnabled) {
+            autoSaveCount.setText(R.string.auto_save_count_none);
+        } else {
+            autoSaveCount.setText("");
+        }
+
         if (state.lastSaveMillis > 0) {
             final String time = DateFormat.getTimeFormat(context).format(new Date(state.lastSaveMillis));
-            lastSave.setText(resources.getString(R.string.last_save, time));
+            lastSave.setText(state.lastSaveName == null
+                    ? resources.getString(R.string.last_save, time)
+                    : resources.getString(R.string.last_save_named, time, state.lastSaveName));
         } else {
             lastSave.setText("");
         }

@@ -9,6 +9,10 @@ public class SaidIt {
     static final String AUTO_SAVE_ENABLED_KEY = "auto_save_enabled";
     static final String AUTO_SAVE_INTERVAL_KEY = "auto_save_interval_minutes";
     static final int AUTO_SAVE_INTERVAL_DEFAULT = 5;
+    static final String LOW_POWER_KEY = "low_power";
+    static final String PRE_LOW_POWER_SAMPLE_RATE_KEY = "pre_low_power_sample_rate";
+    /** Sample rate low power mode drops to: enough for speech, a sixth of the data of 48 kHz. */
+    static final int LOW_POWER_SAMPLE_RATE = 8000;
     static final String SKU = "unlimited_history";
     static final String BASE64_KEY = "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAlD0FMFGp4AWzjW" +
             "LTsUZgm0soga0mVVNGFj0qoATaoQCE/LamF7yrMCIFm9sEOB1guCEhzdr16sjysrVc2EPRisS83FoJ4K0R8" +
