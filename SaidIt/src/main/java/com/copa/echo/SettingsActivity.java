@@ -5,14 +5,11 @@ import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.ServiceConnection;
-import android.content.res.AssetManager;
 import android.content.res.Resources;
 import android.graphics.Rect;
 import android.graphics.Typeface;
 import android.media.AudioFormat;
 import android.media.AudioRecord;
-import android.media.MediaCodecInfo;
-import android.media.MediaCodecList;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.IBinder;
@@ -24,6 +21,7 @@ import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
+import com.copa.echo.android.Fonts;
 import com.copa.echo.android.StringFormat;
 import com.copa.echo.android.TimeFormat;
 import com.copa.echo.android.Views;
@@ -113,7 +111,11 @@ public class SettingsActivity extends Activity {
             button.setEnabled(enabled);
         }
 
-        ((TextView) findViewById(R.id.storage_path)).setText(service.getRecordingsDir().getAbsolutePath());
+        // The cached directory, never getRecordingsDir(): resolving it creates and deletes a probe
+        // file, and this runs on the main thread.
+        final java.io.File dir = service.getResolvedDir();
+        ((TextView) findViewById(R.id.storage_path)).setText(
+                dir == null ? getString(R.string.diagnostics_checking) : dir.getAbsolutePath());
     }
 
     private void syncLowPowerUI() {
@@ -134,7 +136,7 @@ public class SettingsActivity extends Activity {
     void highlightButtons() {
         final long maxMemory = Runtime.getRuntime().maxMemory();
 
-        int button = (int)(service.getMemorySize() / (maxMemory / 4)); // 1 - memory_low; 2 - memory_medium; 3 - memory_high
+        int button = Math.round(service.getMemorySizePreference() / (float)(maxMemory / 4)); // 1 low, 2 medium, 3 high
         highlightButton(R.id.memory_low, R.id.memory_medium, R.id.memory_high, button);
 
         int samplingRate = service.getSamplingRate();
@@ -154,33 +156,15 @@ public class SettingsActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        final AssetManager assets = getAssets();
-        final Resources resources = getResources();
-
-        final float density = resources.getDisplayMetrics().density;
-
-        final Typeface robotoCondensedBold = Typeface.createFromAsset(assets,"RobotoCondensedBold.ttf");
-        final Typeface robotoCondensedRegular = Typeface.createFromAsset(assets, "RobotoCondensed-Regular.ttf");
-
         final ViewGroup root = (ViewGroup) getLayoutInflater().inflate(R.layout.activity_settings, null);
         Views.search(root, new Views.SearchViewCallback() {
             @Override
             public void onView(View view, ViewGroup parent) {
                 if(view instanceof Button) {
-                    final Button button = (Button) view;
-                    button.setTypeface(robotoCondensedBold);
+                    ((Button) view).setTypeface(Fonts.bold(SettingsActivity.this));
                 } else if(view instanceof TextView) {
-                    final String tag = (String) view.getTag();
-                    final TextView textView = (TextView) view;
-                    if(tag != null) {
-                        if(tag.equals("bold")) {
-                            textView.setTypeface(robotoCondensedBold);
-                        } else {
-                            textView.setTypeface(robotoCondensedRegular);
-                        }
-                    } else {
-                        textView.setTypeface(robotoCondensedRegular);
-                    }
+                    ((TextView) view).setTypeface("bold".equals(view.getTag())
+                            ? Fonts.bold(SettingsActivity.this) : Fonts.regular(SettingsActivity.this));
                 }
             }
         });
@@ -217,40 +201,19 @@ public class SettingsActivity extends Activity {
         initSampleRateButton(root, R.id.quality_16kHz, 16000, 22050);
         initSampleRateButton(root, R.id.quality_48kHz, 48000, 44100);
 
-        //debugPrintCodecs();
-
         dialog.setDescriptionStringId(R.string.work_preparing_memory);
 
         setContentView(myFrameLayout);
-    }
-
-    private void debugPrintCodecs() {
-        final int codecCount = MediaCodecList.getCodecCount();
-        for(int i = 0; i < codecCount; ++i) {
-            final MediaCodecInfo info = MediaCodecList.getCodecInfoAt(i);
-            if(!info.isEncoder()) continue;
-            boolean audioFound = false;
-            String types = "";
-            final String[] supportedTypes = info.getSupportedTypes();
-            for(int j = 0; j < supportedTypes.length; ++j) {
-                if(j > 0)
-                    types += ", ";
-                types += supportedTypes[j];
-                if(supportedTypes[j].startsWith("audio")) audioFound = true;
-            }
-            if(!audioFound) continue;
-            Log.d(TAG, "Codec " + i + ": " + info.getName() + " (" + types + ") encoder: " + info.isEncoder());
-        }
     }
 
     private void initSampleRateButton(ViewGroup layout, int buttonId, int primarySampleRate, int secondarySampleRate) {
         Button button = (Button) layout.findViewById(buttonId);
         button.setOnClickListener(qualityClickListener);
         if(testSampleRateValid(primarySampleRate)) {
-            button.setText(String.format("%d kHz", primarySampleRate / 1000));
+            button.setText(String.format(java.util.Locale.getDefault(), "%d kHz", primarySampleRate / 1000));
             button.setTag(primarySampleRate);
         } else if(testSampleRateValid(secondarySampleRate)) {
-            button.setText(String.format("%d kHz", secondarySampleRate / 1000));
+            button.setText(String.format(java.util.Locale.getDefault(), "%d kHz", secondarySampleRate / 1000));
             button.setTag(secondarySampleRate);
         } else {
             button.setVisibility(View.GONE);
@@ -284,11 +247,10 @@ public class SettingsActivity extends Activity {
         }
 
         private int getMultiplier(View button) {
-            switch (button.getId()) {
-                case R.id.memory_high: return 3;
-                case R.id.memory_medium: return 2;
-                case R.id.memory_low: return 1;
-            }
+            final int id = button.getId();
+            if (id == R.id.memory_high) return 3;
+            if (id == R.id.memory_medium) return 2;
+            if (id == R.id.memory_low) return 1;
             return 0;
         }
     }

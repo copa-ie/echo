@@ -2,6 +2,7 @@ package com.copa.echo;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.app.DatePickerDialog;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.res.AssetManager;
@@ -16,6 +17,8 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.AdapterView;
 import android.widget.BaseAdapter;
+import android.widget.Button;
+import android.widget.DatePicker;
 import android.widget.LinearLayout;
 import android.widget.ListView;
 import android.widget.TextView;
@@ -26,22 +29,32 @@ import androidx.core.content.FileProvider;
 import java.io.File;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Calendar;
 import java.util.Date;
 import java.util.List;
 import java.util.Locale;
+import java.util.TreeSet;
 
 import com.copa.echo.android.StringFormat;
-import com.copa.echo.android.TimeFormat;
 import com.copa.echo.android.Views;
 
 /**
- * Shows what is actually on disk: every recording, the stretch of time it covers and,
- * on top, the uninterrupted ranges those files add up to.
+ * Shows what is actually on disk, one calendar day at a time. Months of continuous recording
+ * add up to hundreds of files; scrolling through all of them flat is not navigation, so a day
+ * picker at the top jumps straight to the day you actually want.
  */
 public class RecordingsActivity extends Activity {
 
     private static final String TAG = RecordingsActivity.class.getSimpleName();
 
+    /** Every recording on disk, oldest first, regardless of which day is on screen. */
+    private final List<Recordings.Entry> allEntries = new ArrayList<Recordings.Entry>();
+    /** Midnight (local time) of every day that has at least one recording, oldest first. */
+    private final List<Long> availableDays = new ArrayList<Long>();
+    /** Index into availableDays of the day on screen, or -1 when there is nothing to show. */
+    private int currentDayIndex = -1;
+
+    /** Recordings of the day on screen, newest first: what the adapter actually draws. */
     private final List<Recordings.Entry> entries = new ArrayList<Recordings.Entry>();
     private final RecordingsAdapter adapter = new RecordingsAdapter();
     private final Handler handler = new Handler();
@@ -50,6 +63,10 @@ public class RecordingsActivity extends Activity {
     private Typeface regular;
 
     private TextView summary;
+    private Button dayPrev;
+    private Button dayNext;
+    private TextView dayLabel;
+    private TextView daySummary;
     private TextView rangesTitle;
     private LinearLayout rangesContainer;
     private TextView empty;
@@ -77,24 +94,66 @@ public class RecordingsActivity extends Activity {
                     root.getPaddingRight(), root.getPaddingBottom());
         }
 
-        summary = (TextView) root.findViewById(R.id.recordings_summary);
-        rangesTitle = (TextView) root.findViewById(R.id.ranges_title);
-        rangesContainer = (LinearLayout) root.findViewById(R.id.ranges_container);
-        empty = (TextView) root.findViewById(R.id.recordings_empty);
         list = (ListView) root.findViewById(R.id.recordings_list);
+
+        // Part of the scrolling list itself, see the comment in activity_recordings.xml.
+        // Added before setAdapter: some ListView implementations require that order.
+        final View header = getLayoutInflater().inflate(R.layout.recordings_header, list, false);
+        applyTypefaces((ViewGroup) header);
+        list.addHeaderView(header, null, false);
+
+        summary = (TextView) header.findViewById(R.id.recordings_summary);
+        dayPrev = (Button) header.findViewById(R.id.day_prev);
+        dayNext = (Button) header.findViewById(R.id.day_next);
+        dayLabel = (TextView) header.findViewById(R.id.day_label);
+        daySummary = (TextView) header.findViewById(R.id.day_summary);
+        rangesTitle = (TextView) header.findViewById(R.id.ranges_title);
+        rangesContainer = (LinearLayout) header.findViewById(R.id.ranges_container);
+        empty = (TextView) header.findViewById(R.id.recordings_empty);
+
+        dayPrev.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                if (currentDayIndex > 0) {
+                    --currentDayIndex;
+                    showDay();
+                }
+            }
+        });
+
+        dayNext.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                if (currentDayIndex >= 0 && currentDayIndex < availableDays.size() - 1) {
+                    ++currentDayIndex;
+                    showDay();
+                }
+            }
+        });
+
+        dayLabel.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                openDatePicker();
+            }
+        });
+
         list.setAdapter(adapter);
 
+        // position counts the header added above, so the real entries start after it.
         list.setOnItemClickListener(new AdapterView.OnItemClickListener() {
             @Override
             public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
-                play(entries.get(position).file);
+                final int index = position - list.getHeaderViewsCount();
+                if (index >= 0 && index < entries.size()) play(entries.get(index).file);
             }
         });
 
         list.setOnItemLongClickListener(new AdapterView.OnItemLongClickListener() {
             @Override
             public boolean onItemLongClick(AdapterView<?> parent, View view, int position, long id) {
-                confirmDelete(entries.get(position).file);
+                final int index = position - list.getHeaderViewsCount();
+                if (index >= 0 && index < entries.size()) confirmDelete(entries.get(index).file);
                 return true;
             }
         });
@@ -133,6 +192,10 @@ public class RecordingsActivity extends Activity {
         // in every candidate rather than only the one being written to now.
         final List<File> dirs = Storage.candidates(this);
         final File dir = Storage.resolve(this);
+        // Keep showing the same day across a reload (e.g. after deleting a file), falling back
+        // to the closest one if it no longer has anything in it.
+        final Long keepDay = (currentDayIndex >= 0 && currentDayIndex < availableDays.size())
+                ? availableDays.get(currentDayIndex) : null;
         new Thread(new Runnable() {
             @Override
             public void run() {
@@ -140,22 +203,79 @@ public class RecordingsActivity extends Activity {
                 handler.post(new Runnable() {
                     @Override
                     public void run() {
-                        show(dir, scanned);
+                        show(dir, scanned, keepDay);
                     }
                 });
             }
         }, "recordings-scan").start();
     }
 
-    private void show(File dir, List<Recordings.Entry> scanned) {
-        entries.clear();
-        // Newest first, which is what you want to look at when you open this screen.
-        for (int i = scanned.size() - 1; i >= 0; --i) entries.add(scanned.get(i));
-        adapter.notifyDataSetChanged();
+    private void show(File dir, List<Recordings.Entry> scanned, Long keepDay) {
+        allEntries.clear();
+        allEntries.addAll(scanned);
+
+        final TreeSet<Long> days = new TreeSet<Long>();
+        for (Recordings.Entry entry : scanned) days.add(dayStart(entry.startMillis));
+        availableDays.clear();
+        availableDays.addAll(days);
 
         final int count = scanned.size();
         if (count == 0) {
             summary.setText(getString(R.string.recordings_summary_empty, dir.getAbsolutePath()));
+        } else {
+            summary.setText(getString(R.string.recordings_summary,
+                    getResources().getQuantityString(R.plurals.recordings_file_count, count, count),
+                    RecordingsActivity.longDuration((long) (Recordings.totalDurationSeconds(scanned) * 1000)),
+                    StringFormat.shortFileSize(Recordings.totalSizeBytes(scanned)),
+                    dir.getAbsolutePath()));
+        }
+
+        if (availableDays.isEmpty()) {
+            currentDayIndex = -1;
+        } else if (keepDay != null && availableDays.contains(keepDay)) {
+            currentDayIndex = availableDays.indexOf(keepDay);
+        } else if (keepDay != null) {
+            currentDayIndex = closestDayIndex(keepDay);
+        } else {
+            currentDayIndex = availableDays.size() - 1; // most recent day by default
+        }
+
+        showDay();
+    }
+
+    /** Redraws everything below the overall summary for currentDayIndex. */
+    private void showDay() {
+        entries.clear();
+
+        if (currentDayIndex < 0) {
+            dayLabel.setText("");
+            daySummary.setText("");
+            dayPrev.setEnabled(false);
+            dayNext.setEnabled(false);
+            empty.setText(R.string.recordings_empty);
+            empty.setVisibility(View.VISIBLE);
+            rangesTitle.setVisibility(View.GONE);
+            rangesContainer.removeAllViews();
+            adapter.notifyDataSetChanged();
+            return;
+        }
+
+        final long dayStart = availableDays.get(currentDayIndex);
+        dayLabel.setText(dayLabelLong(dayStart));
+        dayPrev.setEnabled(currentDayIndex > 0);
+        dayNext.setEnabled(currentDayIndex < availableDays.size() - 1);
+
+        final List<Recordings.Entry> dayEntries = new ArrayList<Recordings.Entry>();
+        for (Recordings.Entry entry : allEntries) {
+            if (dayStart(entry.startMillis) == dayStart) dayEntries.add(entry);
+        }
+        // Newest first, which is what you want to look at when you open this screen.
+        for (int i = dayEntries.size() - 1; i >= 0; --i) entries.add(dayEntries.get(i));
+        adapter.notifyDataSetChanged();
+
+        if (dayEntries.isEmpty()) {
+            daySummary.setText("");
+            empty.setText(R.string.recordings_day_empty);
             empty.setVisibility(View.VISIBLE);
             rangesTitle.setVisibility(View.GONE);
             rangesContainer.removeAllViews();
@@ -163,13 +283,13 @@ public class RecordingsActivity extends Activity {
         }
 
         empty.setVisibility(View.GONE);
-        summary.setText(getString(R.string.recordings_summary,
+        final int count = dayEntries.size();
+        daySummary.setText(getString(R.string.recordings_day_summary,
                 getResources().getQuantityString(R.plurals.recordings_file_count, count, count),
-                longDuration((long) (Recordings.totalDurationSeconds(scanned) * 1000)),
-                StringFormat.shortFileSize(Recordings.totalSizeBytes(scanned)),
-                dir.getAbsolutePath()));
+                longDuration((long) (Recordings.totalDurationSeconds(dayEntries) * 1000)),
+                StringFormat.shortFileSize(Recordings.totalSizeBytes(dayEntries))));
 
-        final List<Recordings.Range> ranges = Recordings.ranges(scanned, Recordings.DEFAULT_MAX_GAP_MILLIS);
+        final List<Recordings.Range> ranges = Recordings.ranges(dayEntries, Recordings.DEFAULT_MAX_GAP_MILLIS);
         rangesTitle.setVisibility(View.VISIBLE);
         rangesContainer.removeAllViews();
         // Newest range first, same order as the list below.
@@ -190,9 +310,67 @@ public class RecordingsActivity extends Activity {
         }
     }
 
+    private void openDatePicker() {
+        if (availableDays.isEmpty() || currentDayIndex < 0) return;
+        final Calendar cal = Calendar.getInstance();
+        cal.setTimeInMillis(availableDays.get(currentDayIndex));
+        new DatePickerDialog(this, new DatePickerDialog.OnDateSetListener() {
+            @Override
+            public void onDateSet(DatePicker view, int year, int month, int dayOfMonth) {
+                final Calendar picked = Calendar.getInstance();
+                picked.set(year, month, dayOfMonth, 0, 0, 0);
+                picked.set(Calendar.MILLISECOND, 0);
+                jumpToDay(picked.getTimeInMillis());
+            }
+        }, cal.get(Calendar.YEAR), cal.get(Calendar.MONTH), cal.get(Calendar.DAY_OF_MONTH)).show();
+    }
+
+    /** Jumps to the given day, or the closest one that actually has recordings. */
+    private void jumpToDay(long target) {
+        final int index = closestDayIndex(target);
+        if (index < 0) return;
+        final boolean exact = availableDays.get(index) == target;
+        currentDayIndex = index;
+        showDay();
+        if (!exact) {
+            Toast.makeText(this, getString(R.string.recordings_jumped_to_day,
+                    dayLabelLong(availableDays.get(index))), Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private int closestDayIndex(long target) {
+        int best = -1;
+        long bestDiff = Long.MAX_VALUE;
+        for (int i = 0; i < availableDays.size(); ++i) {
+            final long diff = Math.abs(availableDays.get(i) - target);
+            if (diff < bestDiff) {
+                bestDiff = diff;
+                best = i;
+            }
+        }
+        return best;
+    }
+
+    /** Midnight, local time, of the day millis falls on: the key entries are grouped by. */
+    private static long dayStart(long millis) {
+        final Calendar cal = Calendar.getInstance();
+        cal.setTimeInMillis(millis);
+        cal.set(Calendar.HOUR_OF_DAY, 0);
+        cal.set(Calendar.MINUTE, 0);
+        cal.set(Calendar.SECOND, 0);
+        cal.set(Calendar.MILLISECOND, 0);
+        return cal.getTimeInMillis();
+    }
+
     private String dayLabel(long millis) {
         return DateUtils.formatDateTime(this, millis,
                 DateUtils.FORMAT_SHOW_DATE | DateUtils.FORMAT_SHOW_WEEKDAY | DateUtils.FORMAT_ABBREV_ALL);
+    }
+
+    /** Full weekday and date, no abbreviations: what the day picker itself shows. */
+    private String dayLabelLong(long millis) {
+        return DateUtils.formatDateTime(this, millis,
+                DateUtils.FORMAT_SHOW_DATE | DateUtils.FORMAT_SHOW_WEEKDAY | DateUtils.FORMAT_SHOW_YEAR);
     }
 
     /** h:mm:ss, dropping the hours when there are none. */

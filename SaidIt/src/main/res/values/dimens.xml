@@ -5,7 +5,7 @@
     <dimen name="info_text_size">20sp</dimen>
     <dimen name="ticket_text_size">18sp</dimen>
     <dimen name="emph_text_size">26sp</dimen>
-    <dimen name="small_text_size">15dp</dimen>
+    <dimen name="small_text_size">15sp</dimen>
 
     <dimen name="button_text_size">25sp</dimen>
     <dimen name="button_padding">8dp</dimen>

@@ -65,7 +65,12 @@
     <string name="recordings_title">Grabaciones</string>
     <string name="settings_title">Ajustes</string>
     <string name="recordings_loading">Leyendo el almacenamiento…</string>
-    <string name="recordings_ranges_title">Tiempo cubierto en disco</string>
+    <string name="recordings_ranges_title">Tiempo cubierto ese día</string>
+    <string name="recordings_previous_day">Día anterior</string>
+    <string name="recordings_next_day">Día siguiente</string>
+    <string name="recordings_day_summary">%1$s · %2$s de audio · %3$s</string>
+    <string name="recordings_day_empty">No se guardó ninguna grabación este día.</string>
+    <string name="recordings_jumped_to_day">Ese día no hay grabaciones. Mostrando el más cercano: %1$s</string>
     <string name="recordings_empty">Todavía no se ha guardado ninguna grabación. Los archivos guardados aparecerán aquí.</string>
     <string name="recordings_summary">%1$s · %2$s de audio · %3$s\n%4$s</string>
     <string name="recordings_summary_empty">No hay nada guardado en\n%1$s</string>
@@ -124,6 +129,9 @@
 
     <string name="permission_required">Permiso necesario</string>
     <string name="permission_required_message">Echo necesita permiso para grabar y guardar audio. Actívalo en los ajustes.</string>
+    <string name="storage_permission_title">Acceso a todos los archivos</string>
+    <string name="storage_permission_message">Sin acceso a todos los archivos Echo sigue grabando, pero las grabaciones se guardan en el almacenamiento propio de la app y desaparecen si la desinstalas. Concede el acceso para guardarlas en Música/Echo.</string>
+    <string name="continue_anyway">Continuar sin él</string>
 
     <!-- Avisos de salud en la pantalla principal -->
 
@@ -210,6 +218,7 @@
 
     <string name="error_mic_unavailable">No se pudo abrir el micrófono. Puede que otra app lo esté usando o que se haya revocado el permiso.</string>
     <string name="error_audio_read">Error de lectura del micrófono (%1$d), reintentando</string>
+    <string name="error_capture_failed">La captura de audio falló al llenar la memoria.</string>
     <string name="error_cant_write_dir">No se puede escribir en %1$s</string>
     <string name="error_cant_go_foreground">Android no ha permitido que Echo se ejecute en primer plano. Hay que arrancarlo desde la app, no desde segundo plano.</string>
 

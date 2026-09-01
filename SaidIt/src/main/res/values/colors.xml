@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <color name="gray_0">#ff000000</color>
+    <color name="gray_2">#ff222222</color>
     <color name="gray_6">#ff666666</color>
     <color name="gray_8">#ff888888</color>
     <color name="gray_a">#ffaaaaaa</color>

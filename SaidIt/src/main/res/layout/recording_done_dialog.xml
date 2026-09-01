@@ -18,7 +18,7 @@
 
     <ScrollView
         android:layout_width="match_parent"
-        android:layout_height="match_parent">
+        android:layout_height="wrap_content">
 
         <LinearLayout
             android:id="@+id/payment_method_dialog_content"
@@ -33,12 +33,14 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="@dimen/small_round"
                 android:tag="bold"
+                android:textColor="@color/gray_f"
                 android:text="@string/recording_done_filename" />
 
             <TextView
                 android:id="@+id/recording_done_filename"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
+                android:textColor="@color/gray_c"
                 android:text="" />
 
             <LinearLayout
@@ -57,12 +59,14 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:tag="bold"
+                        android:textColor="@color/gray_f"
                         android:text="@string/recording_done_directory" />
 
                     <TextView
                         android:id="@+id/recording_done_dirname"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
+                        android:textColor="@color/gray_c"
                         android:text="" />
 
                 </LinearLayout>
@@ -85,12 +89,14 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="@dimen/small_round"
                 android:tag="bold"
+                android:textColor="@color/gray_f"
                 android:text="@string/recording_done_runtime" />
 
             <TextView
                 android:id="@+id/recording_done_runtime"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
+                android:textColor="@color/gray_c"
                 android:text="" />
 
             <TextView
@@ -98,46 +104,27 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="@dimen/small_round"
                 android:tag="bold"
+                android:textColor="@color/gray_f"
                 android:text="@string/recording_done_size" />
 
             <TextView
                 android:id="@+id/recording_done_size"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
+                android:textColor="@color/gray_c"
                 android:text="" />
 
-            <LinearLayout
+            <Button
+                android:id="@+id/recording_done_send"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="@dimen/small_round"
-                android:orientation="horizontal">
-
-                <Button
-                    android:id="@+id/recording_done_send"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_marginRight="@dimen/small_round"
-                    android:layout_weight="1"
-                    android:background="@drawable/white_button"
-                    android:drawableStart="@drawable/ic_action_send_now"
-                    android:shadowColor="@color/transparent"
-                    android:text="@string/send"
-                    android:textColor="@color/gray_8"
-                    android:textSize="@dimen/info_text_size" />
-
-                <Button
-                    android:id="@+id/recording_done_play"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:background="@drawable/white_button"
-                    android:drawableStart="@drawable/ic_action_play"
-                    android:shadowColor="@color/transparent"
-                    android:text="@string/open"
-                    android:textColor="@color/gray_8"
-                    android:textSize="@dimen/info_text_size" />
-
-            </LinearLayout>
+                android:background="@drawable/white_button"
+                android:drawableStart="@drawable/ic_action_send_now"
+                android:shadowColor="@color/transparent"
+                android:text="@string/send"
+                android:textColor="@color/gray_8"
+                android:textSize="@dimen/info_text_size" />
         </LinearLayout>
 
     </ScrollView>

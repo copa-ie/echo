@@ -125,6 +125,9 @@
     <string name="save_recording">Save Recording</string> <!-- must end sentence -->
     <string name="permission_required">Permission required</string>
     <string name="permission_required_message">Echo app requires permission to record and save audio. Please enable it in the settings.</string>
+    <string name="storage_permission_title">All files access</string>
+    <string name="storage_permission_message">Without access to all files, Echo still records, but recordings are kept in the app\'s own storage and disappear if you uninstall it. Grant the access to keep them in Music/Echo instead.</string>
+    <string name="continue_anyway">Continue without it</string>
     <!--
     <string name="compress_help"><b>WAV</b> - oznacza brak jakiejkolwiek kompresji - jest to format najlepiej oszczędzający baterię i cechujący się najlepszą jakością. Jego wadą jest duże zużycie pamięci.\n
 <b>3GP</b> - oferuje najmocniejszą kompresję ale jest bardzo energożerny i może usunąć z nagrania drobne detale\n
@@ -173,7 +176,12 @@
     <string name="recordings_title">Recordings</string>
     <string name="settings_title">Settings</string>
     <string name="recordings_loading">Reading storage…</string>
-    <string name="recordings_ranges_title">Time covered on disk</string>
+    <string name="recordings_ranges_title">Time covered that day</string>
+    <string name="recordings_previous_day">Previous day</string>
+    <string name="recordings_next_day">Next day</string>
+    <string name="recordings_day_summary">%1$s · %2$s of audio · %3$s</string>
+    <string name="recordings_day_empty">No recordings were saved on this day.</string>
+    <string name="recordings_jumped_to_day">No recordings that day. Showing the closest one: %1$s</string>
     <string name="recordings_empty">No recording has been stored yet. Saved files will show up here.</string>
     <string name="recordings_summary">%1$s · %2$s of audio · %3$s
 %4$s</string>
@@ -289,6 +297,7 @@
 
     <string name="error_mic_unavailable">The microphone could not be opened. Another app may be using it, or the permission was revoked.</string>
     <string name="error_audio_read">Microphone read error (%1$d), retrying</string>
+    <string name="error_capture_failed">Audio capture failed while filling memory.</string>
     <string name="error_cant_write_dir">Cannot write into %1$s</string>
     <string name="error_cant_go_foreground">Android refused to let Echo run in the foreground. It has to be started from the app, not from the background.</string>
 

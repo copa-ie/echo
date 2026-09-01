@@ -5,62 +5,13 @@
     android:layout_height="match_parent"
     android:orientation="vertical">
 
-    <TextView
-        android:layout_marginTop="16dp"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:tag="bold"
-        style="@style/EmphasizedText"
-        android:text="@string/recordings_title" />
-
-    <TextView
-        android:id="@+id/recordings_summary"
-        android:layout_marginTop="8dp"
-        android:layout_marginLeft="16dp"
-        android:layout_marginRight="16dp"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        style="@style/SmallText"
-        android:gravity="center"
-        android:text="@string/recordings_loading" />
-
-    <TextView
-        android:id="@+id/ranges_title"
-        android:layout_marginTop="14dp"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:visibility="gone"
-        android:text="@string/recordings_ranges_title" />
-
-    <LinearLayout
-        android:id="@+id/ranges_container"
-        android:layout_marginLeft="16dp"
-        android:layout_marginRight="16dp"
-        android:layout_marginTop="4dp"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="vertical" />
-
-    <View
-        android:layout_marginLeft="50dp"
-        android:layout_marginRight="50dp"
-        android:layout_marginTop="16dp"
-        android:layout_marginBottom="8dp"
-        android:layout_width="match_parent"
-        android:layerType="software"
-        android:layout_height="7dp"
-        android:background="@drawable/dashed_line" />
-
-    <TextView
-        android:id="@+id/recordings_empty"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="20dp"
-        android:layout_marginLeft="16dp"
-        android:layout_marginRight="16dp"
-        android:visibility="gone"
-        android:text="@string/recordings_empty" />
-
+    <!--
+        The header (title, summary, ranges) is added to the ListView itself via
+        addHeaderView, not placed here: with hundreds of recordings the ranges block can
+        grow taller than the screen, and as a sibling above the list it would take all the
+        space away from it, leaving nothing to scroll in. Inside the list it scrolls with
+        everything else instead of competing for room.
+    -->
     <ListView
         android:id="@+id/recordings_list"
         android:layout_width="match_parent"

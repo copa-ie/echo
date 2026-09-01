@@ -148,7 +148,9 @@ public class AudioMemory {
         }
         offset = 0;
         currentWasFilled = false;
-        System.gc();
+        // No System.gc() here: nothing was released, the buffers only moved to the free list, and
+        // this runs on the audio thread after every automatic save. A stop the world pause there
+        // is exactly what makes AudioRecord's buffer overrun.
     }
 
 }

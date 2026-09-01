@@ -2,17 +2,12 @@ package com.copa.echo;
 
 import android.app.Activity;
 import android.app.Fragment;
-import android.app.Notification;
-import android.app.PendingIntent;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.ServiceConnection;
-import android.content.pm.PackageManager;
-import android.content.res.AssetManager;
 import android.content.res.Resources;
 import android.graphics.Typeface;
-import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.IBinder;
@@ -27,25 +22,26 @@ import android.widget.Button;
 import android.widget.ProgressBar;
 import android.widget.TextView;
 
-import androidx.core.app.ActivityCompat;
-import androidx.core.app.NotificationCompat;
-import androidx.core.app.NotificationManagerCompat;
-import androidx.core.content.FileProvider;
 
 import java.io.File;
 import java.util.Date;
 
+import com.copa.echo.android.Fonts;
 import com.copa.echo.android.TimeFormat;
 import com.copa.echo.android.Views;
 
 public class SaidItFragment extends Fragment {
 
     private static final String TAG = SaidItFragment.class.getSimpleName();
-    private static final String YOUR_NOTIFICATION_CHANNEL_ID = "SaidItServiceChannel";
-    /** How often the screen refreshes itself while it is visible. */
-    private static final long REFRESH_MILLIS = 500;
-    /** Low power mode polls the service less often, since every poll wakes the audio thread. */
-    private static final long REFRESH_MILLIS_LOW_POWER = 2000;
+    /**
+     * How often the screen refreshes itself while it is visible. Every refresh wakes the audio
+     * thread for a read, and nothing on screen is finer grained than a second, so a second it is.
+     */
+    private static final long REFRESH_MILLIS = 1000;
+    /** Low power mode polls even less often. */
+    private static final long REFRESH_MILLIS_LOW_POWER = 3000;
+    /** An error older than this is history, not a live problem. */
+    private static final long ERROR_FRESH_MILLIS = 120000;
 
     private View statusBanner;
     private View statusDot;
@@ -67,12 +63,8 @@ public class SaidItFragment extends Fragment {
     private Animation dotPulse;
     /** Whether the pulsing dot is currently animating, so we only start/stop it on real changes. */
     private boolean dotPulsing = false;
-    /** Last drawn banner state, -1 until the first refresh. */
-    private int shownState = -1;
-
-    private static final int SHOWN_STOPPED = 0;
-    private static final int SHOWN_LISTENING = 1;
-    private static final int SHOWN_RECORDING = 2;
+    /** Last drawn banner state: null until the first refresh. */
+    private Boolean shownListening = null;
 
     SaidItService echo;
 
@@ -128,15 +120,6 @@ public class SaidItFragment extends Fragment {
         }
     };
 
-    public int getStatusBarHeight() {
-        int result = 0;
-        int resourceId = getResources().getIdentifier("status_bar_height", "dimen", "android");
-        if (resourceId > 0) {
-            result = getResources().getDimensionPixelSize(resourceId);
-        }
-        return result;
-    }
-
     @Override
     public View onCreateView(LayoutInflater inflater, ViewGroup container, Bundle savedInstanceState) {
 
@@ -144,9 +127,8 @@ public class SaidItFragment extends Fragment {
         if (rootView == null) return null;
 
         final Activity activity = getActivity();
-        final AssetManager assets = activity.getAssets();
-        final Typeface robotoCondensedBold = Typeface.createFromAsset(assets, "RobotoCondensedBold.ttf");
-        final Typeface robotoCondensedRegular = Typeface.createFromAsset(assets, "RobotoCondensed-Regular.ttf");
+        final Typeface robotoCondensedBold = Fonts.bold(activity);
+        final Typeface robotoCondensedRegular = Fonts.regular(activity);
         final float density = activity.getResources().getDisplayMetrics().density;
 
         Views.search((ViewGroup) rootView, new Views.SearchViewCallback() {
@@ -185,7 +167,7 @@ public class SaidItFragment extends Fragment {
         dotPulse = AnimationUtils.loadAnimation(activity, R.anim.dot_pulse);
 
         // The banner sits under the status bar, so it has to make room for it itself.
-        final int statusBarHeight = getStatusBarHeight();
+        final int statusBarHeight = Views.statusBarHeight(activity);
         statusBanner.setPadding(statusBanner.getPaddingLeft(), statusBanner.getPaddingTop() + statusBarHeight,
                 statusBanner.getPaddingRight(), statusBanner.getPaddingBottom());
 
@@ -285,33 +267,23 @@ public class SaidItFragment extends Fragment {
     };
 
     private void drawBanner(Resources resources, SaidItService.State state) {
-        final int wanted = state.recording ? SHOWN_RECORDING
-                : (state.listeningEnabled ? SHOWN_LISTENING : SHOWN_STOPPED);
-        if (wanted == shownState) return;
-        shownState = wanted;
+        final boolean listening = state.listeningEnabled;
+        if (shownListening != null && shownListening == listening) return;
+        shownListening = listening;
 
-        switch (wanted) {
-            case SHOWN_RECORDING:
-                statusBanner.setBackgroundColor(resources.getColor(R.color.dark_red));
-                statusText.setText(R.string.status_recording_to_file);
-                statusHint.setText(R.string.status_hint_stop);
-                break;
-            case SHOWN_LISTENING:
-                statusBanner.setBackgroundColor(resources.getColor(R.color.dark_green));
-                statusText.setText(R.string.status_listening);
-                statusHint.setText(R.string.status_hint_stop);
-                break;
-            default:
-                statusBanner.setBackgroundColor(resources.getColor(R.color.gray_6));
-                statusText.setText(R.string.status_stopped);
-                statusHint.setText(R.string.status_hint_start);
-                break;
+        if (listening) {
+            statusBanner.setBackgroundColor(resources.getColor(R.color.dark_green));
+            statusText.setText(R.string.status_listening);
+            statusHint.setText(R.string.status_hint_stop);
+        } else {
+            statusBanner.setBackgroundColor(resources.getColor(R.color.gray_6));
+            statusText.setText(R.string.status_stopped);
+            statusHint.setText(R.string.status_hint_start);
         }
 
-        final boolean shouldPulse = (wanted != SHOWN_STOPPED);
-        if (shouldPulse != dotPulsing) {
-            dotPulsing = shouldPulse;
-            if (shouldPulse) {
+        if (listening != dotPulsing) {
+            dotPulsing = listening;
+            if (listening) {
                 statusDot.startAnimation(dotPulse);
             } else {
                 statusDot.clearAnimation();
@@ -319,9 +291,8 @@ public class SaidItFragment extends Fragment {
         }
 
         // Nothing is being captured while stopped, so there is nothing to save either.
-        final boolean canSave = (wanted != SHOWN_STOPPED);
-        saveEverythingButton.setEnabled(canSave);
-        saveEverythingButton.setAlpha(canSave ? 1f : 0.4f);
+        saveEverythingButton.setEnabled(listening);
+        saveEverythingButton.setAlpha(listening ? 1f : 0.4f);
     }
 
     /**
@@ -333,7 +304,8 @@ public class SaidItFragment extends Fragment {
         if (state.listeningEnabled) {
             if (!state.capturing) {
                 message = resources.getString(R.string.warning_not_capturing);
-            } else if (state.lastError != null) {
+            } else if (state.lastError != null
+                    && System.currentTimeMillis() - state.lastErrorMillis < ERROR_FRESH_MILLIS) {
                 message = resources.getString(R.string.warning_error, state.lastError);
             } else if (state.intervalExceedsMemory) {
                 message = resources.getString(R.string.warning_interval_too_long,
@@ -406,44 +378,6 @@ public class SaidItFragment extends Fragment {
     }
 
     final TimeFormat.Result timeFormatResult = new TimeFormat.Result();
-
-    static Notification buildNotificationForFile(Context context, File outFile) {
-        Intent intent = new Intent(Intent.ACTION_VIEW);
-        Uri fileUri = FileProvider.getUriForFile(context, context.getApplicationContext().getPackageName() + ".provider", outFile);
-        intent.setDataAndType(fileUri, "audio/wav");
-        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION); // Grant read permission to the receiving app
-
-        PendingIntent pendingIntent = PendingIntent.getActivity(context, 0, intent, PendingIntent.FLAG_IMMUTABLE);
-
-        NotificationCompat.Builder notificationBuilder = new NotificationCompat.Builder(context, YOUR_NOTIFICATION_CHANNEL_ID)
-                .setContentTitle(context.getString(R.string.recording_saved))
-                .setContentText(outFile.getName())
-                .setSmallIcon(R.drawable.ic_stat_notify_recorded)
-                .setTicker(outFile.getName())
-                .setContentIntent(pendingIntent)
-                .setAutoCancel(true);
-        notificationBuilder.setPriority(NotificationCompat.PRIORITY_DEFAULT);
-        notificationBuilder.setCategory(NotificationCompat.CATEGORY_MESSAGE);
-        return notificationBuilder.build();
-    }
-
-    static class NotifyFileReceiver implements SaidItService.WavFileReceiver {
-
-        private final Context context;
-
-        public NotifyFileReceiver(Context context) {
-            this.context = context;
-        }
-
-        @Override
-        public void fileReady(final File file, float runtime) {
-            NotificationManagerCompat notificationManager = NotificationManagerCompat.from(context);
-            if (ActivityCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-                return;
-            }
-            notificationManager.notify(43, buildNotificationForFile(context, file));
-        }
-    }
 
     static class PromptFileReceiver implements SaidItService.WavFileReceiver {
 

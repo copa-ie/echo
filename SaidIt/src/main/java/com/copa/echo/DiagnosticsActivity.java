@@ -28,6 +28,7 @@ import java.io.File;
 import java.util.Date;
 import java.util.List;
 
+import com.copa.echo.android.Fonts;
 import com.copa.echo.android.StringFormat;
 import com.copa.echo.android.TimeFormat;
 import com.copa.echo.android.Views;
@@ -48,6 +49,12 @@ public class DiagnosticsActivity extends Activity {
     private LinearLayout rows;
     private LinearLayout log;
 
+    /** How many rows of the container are in use this pass; the rest are hidden, not recreated. */
+    private int rowsUsed = 0;
+    /** Last event count drawn, so the log is only rebuilt when it actually changed. */
+    private int drawnEvents = -1;
+    private PowerManager power;
+
     private final Handler handler = new Handler();
     private boolean running = false;
     /** Result of the last real write probe, null while it has not finished yet. */
@@ -59,26 +66,16 @@ public class DiagnosticsActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        bold = Typeface.createFromAsset(getAssets(), "RobotoCondensedBold.ttf");
-        regular = Typeface.createFromAsset(getAssets(), "RobotoCondensed-Regular.ttf");
+        bold = Fonts.bold(this);
+        regular = Fonts.regular(this);
+        power = (PowerManager) getSystemService(POWER_SERVICE);
 
         final ViewGroup root = (ViewGroup) getLayoutInflater().inflate(R.layout.activity_diagnostics, null);
-        Views.search(root, new Views.SearchViewCallback() {
-            @Override
-            public void onView(View view, ViewGroup parent) {
-                if (view instanceof TextView) {
-                    ((TextView) view).setTypeface("bold".equals(view.getTag()) ? bold : regular);
-                }
-            }
-        });
+        Views.applyFonts(root, this);
 
-        final int statusBarId = getResources().getIdentifier("status_bar_height", "dimen", "android");
-        if (statusBarId > 0) {
-            final LinearLayout layout = (LinearLayout) root.findViewById(R.id.diagnostics_layout);
-            layout.setPadding(layout.getPaddingLeft(),
-                    layout.getPaddingTop() + getResources().getDimensionPixelSize(statusBarId),
-                    layout.getPaddingRight(), layout.getPaddingBottom());
-        }
+        final LinearLayout layout = (LinearLayout) root.findViewById(R.id.diagnostics_layout);
+        layout.setPadding(layout.getPaddingLeft(), layout.getPaddingTop() + Views.statusBarHeight(this),
+                layout.getPaddingRight(), layout.getPaddingBottom());
 
         verdict = (TextView) root.findViewById(R.id.diagnostics_verdict);
         rows = (LinearLayout) root.findViewById(R.id.diagnostics_rows);
@@ -108,6 +105,7 @@ public class DiagnosticsActivity extends Activity {
                 echo.forgetStorageDir();
                 echo.disableListening();
                 storageWritable = null;
+                drawnEvents = -1;
                 handler.postDelayed(new Runnable() {
                     @Override
                     public void run() {
@@ -205,7 +203,7 @@ public class DiagnosticsActivity extends Activity {
     private static final int INFO = 2;
 
     private void draw(SaidItService.State state) {
-        rows.removeAllViews();
+        rowsUsed = 0;
 
         final boolean healthy = state.isHealthy();
         verdict.setTypeface(bold);
@@ -229,17 +227,19 @@ public class DiagnosticsActivity extends Activity {
         addRow(getString(R.string.diagnostics_all_files), value(allFiles), allFiles ? OK : INFO);
 
         // --- storage: the only check that proves a write will work ---
-        final File dir = new File(state.storagePath);
         final Boolean writable = storageWritable;
         addRow(getString(R.string.diagnostics_storage_writable),
                 writable == null ? getString(R.string.diagnostics_checking) : value(writable),
                 writable == null ? INFO : (writable ? OK : BAD));
-        addRow(getString(R.string.diagnostics_storage_path), state.storagePath,
+        addRow(getString(R.string.diagnostics_storage_path),
+                state.storagePath == null ? getString(R.string.diagnostics_checking) : state.storagePath,
                 state.storagePublic ? OK : INFO);
-        if (!state.storagePublic) {
+        if (state.storagePath != null && !state.storagePublic) {
             addRow("", getString(R.string.diagnostics_storage_private_note), INFO);
         }
-        addRow(getString(R.string.diagnostics_free_space), freeSpace(dir), INFO);
+        if (state.storagePath != null) {
+            addRow(getString(R.string.diagnostics_free_space), freeSpace(new File(state.storagePath)), INFO);
+        }
 
         // --- capture ---
         addRow(getString(R.string.diagnostics_sample_rate),
@@ -289,7 +289,6 @@ public class DiagnosticsActivity extends Activity {
                 state.lastSaveMillis == 0 ? INFO : OK);
 
         // --- battery ---
-        final PowerManager power = (PowerManager) getSystemService(POWER_SERVICE);
         final boolean unrestricted = power != null && power.isIgnoringBatteryOptimizations(getPackageName());
         addRow(getString(R.string.diagnostics_battery_unrestricted), value(unrestricted), unrestricted ? OK : INFO);
 
@@ -299,13 +298,21 @@ public class DiagnosticsActivity extends Activity {
                     BAD);
         }
 
+        // Hide whatever the previous, longer pass left behind.
+        for (int i = rowsUsed; i < rows.getChildCount(); ++i) {
+            rows.getChildAt(i).setVisibility(View.GONE);
+        }
+
         drawLog();
     }
 
     private void drawLog() {
-        log.removeAllViews();
         if (echo == null) return;
         final List<String> events = echo.getEvents();
+        if (events.size() == drawnEvents) return; // nothing new to say
+        drawnEvents = events.size();
+
+        log.removeAllViews();
         if (events.isEmpty()) {
             log.addView(text(getString(R.string.diagnostics_log_empty), R.color.gray_8));
             return;
@@ -325,6 +332,7 @@ public class DiagnosticsActivity extends Activity {
         }
     }
 
+    /** Fills the next row of the container, creating it only the first time round. */
     private void addRow(String label, String value, int status) {
         final int color;
         final String glyph;
@@ -334,7 +342,19 @@ public class DiagnosticsActivity extends Activity {
             default: color = R.color.gray_c; glyph = "· "; break;
         }
         final String line = label.isEmpty() ? glyph + value : glyph + label + ": " + value;
-        rows.addView(text(line, color));
+
+        final TextView view;
+        if (rowsUsed < rows.getChildCount()) {
+            view = (TextView) rows.getChildAt(rowsUsed);
+            view.setVisibility(View.VISIBLE);
+        } else {
+            view = text("", color);
+            rows.addView(view);
+        }
+        ++rowsUsed;
+
+        view.setTextColor(getResources().getColor(color));
+        if (!line.equals(view.getText().toString())) view.setText(line);
     }
 
     private TextView text(String content, int colorId) {

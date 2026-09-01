@@ -28,3 +28,6 @@ proguard/
 # IDEs
 .idea/
 .vscode/
+
+# Signing config, see SaidIt/build.gradle
+keystore.properties

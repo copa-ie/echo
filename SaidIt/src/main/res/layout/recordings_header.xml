@@ -1,0 +1,132 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical">
+
+    <TextView
+        android:layout_marginTop="16dp"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:tag="bold"
+        style="@style/EmphasizedText"
+        android:text="@string/recordings_title" />
+
+    <TextView
+        android:id="@+id/recordings_summary"
+        android:layout_marginTop="8dp"
+        android:layout_marginLeft="16dp"
+        android:layout_marginRight="16dp"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        style="@style/SmallText"
+        android:gravity="center"
+        android:text="@string/recordings_loading" />
+
+    <!-- Day picker: the whole point is to jump straight to a day instead of scrolling
+         through hundreds of files, so this sits right under the overall summary. -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:layout_marginLeft="16dp"
+        android:layout_marginRight="16dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <Button
+            android:id="@+id/day_prev"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
+            android:minWidth="0dp"
+            android:minHeight="0dp"
+            android:padding="0dp"
+            android:layout_margin="0dp"
+            android:background="@drawable/gray_button"
+            android:text="‹"
+            android:textColor="@color/gray_f"
+            android:textSize="24sp"
+            android:contentDescription="@string/recordings_previous_day" />
+
+        <TextView
+            android:id="@+id/day_label"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginLeft="8dp"
+            android:layout_marginRight="8dp"
+            android:gravity="center"
+            android:tag="bold"
+            android:textSize="18sp"
+            android:textColor="@color/gray_f"
+            android:clickable="true"
+            android:focusable="true"
+            android:background="?attr/selectableItemBackground"
+            android:padding="8dp"
+            android:text="" />
+
+        <Button
+            android:id="@+id/day_next"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
+            android:minWidth="0dp"
+            android:minHeight="0dp"
+            android:padding="0dp"
+            android:layout_margin="0dp"
+            android:background="@drawable/gray_button"
+            android:text="›"
+            android:textColor="@color/gray_f"
+            android:textSize="24sp"
+            android:contentDescription="@string/recordings_next_day" />
+
+    </LinearLayout>
+
+    <TextView
+        android:id="@+id/day_summary"
+        android:layout_marginTop="4dp"
+        android:layout_marginLeft="16dp"
+        android:layout_marginRight="16dp"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        style="@style/SmallText"
+        android:gravity="center"
+        android:text="" />
+
+    <TextView
+        android:id="@+id/ranges_title"
+        android:layout_marginTop="14dp"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:visibility="gone"
+        android:text="@string/recordings_ranges_title" />
+
+    <LinearLayout
+        android:id="@+id/ranges_container"
+        android:layout_marginLeft="16dp"
+        android:layout_marginRight="16dp"
+        android:layout_marginTop="4dp"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical" />
+
+    <View
+        android:layout_marginLeft="50dp"
+        android:layout_marginRight="50dp"
+        android:layout_marginTop="16dp"
+        android:layout_marginBottom="8dp"
+        android:layout_width="match_parent"
+        android:layerType="software"
+        android:layout_height="7dp"
+        android:background="@drawable/dashed_line" />
+
+    <TextView
+        android:id="@+id/recordings_empty"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="20dp"
+        android:layout_marginLeft="16dp"
+        android:layout_marginRight="16dp"
+        android:visibility="gone"
+        android:text="@string/recordings_empty" />
+
+</LinearLayout>

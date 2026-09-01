@@ -23,16 +23,24 @@ android {
         applicationId "com.copa.echo"
         minSdk 30
         targetSdk 34
-        versionCode 15
-        versionName "2.0.0"
+        versionCode 16
+        versionName "2.1.0"
+    }
+
+    def keystoreProperties = new Properties()
+    def keystorePropertiesFile = rootProject.file("keystore.properties")
+    if (keystorePropertiesFile.exists()) {
+        keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
     }
 
     signingConfigs {
-        release {
-            storeFile file("<relative path>")
-            storePassword "<fill in>"
-            keyAlias "<fill in>"
-            keyPassword "<fill in>"
+        if (keystorePropertiesFile.exists()) {
+            release {
+                storeFile rootProject.file(keystoreProperties['storeFile'])
+                storePassword keystoreProperties['storePassword']
+                keyAlias keystoreProperties['keyAlias']
+                keyPassword keystoreProperties['keyPassword']
+            }
         }
     }
 
@@ -41,12 +49,14 @@ android {
             minifyEnabled true
             proguardFile file('proguard.cfg')
             proguardFile getDefaultProguardFile('proguard-android-optimize.txt')
-            signingConfig signingConfigs.release
+            if (keystorePropertiesFile.exists()) {
+                signingConfig signingConfigs.release
+            }
         }
-
-        debug {
-            //signingConfig signingConfigs.release
-        }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
     }
     lint {
         abortOnError false

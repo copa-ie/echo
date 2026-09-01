@@ -88,19 +88,6 @@ public class RecordingDoneDialog extends ThemedDialog {
             }
         });
 
-        root.findViewById(R.id.recording_done_play).setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                Intent intent = new Intent();
-                intent.setAction(android.content.Intent.ACTION_VIEW);
-                Uri fileUri = FileProvider.getUriForFile(activity, BuildConfig.APPLICATION_ID + ".provider", file);
-                intent.setDataAndType(fileUri, "audio/*");
-                intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION); // Grant read permission
-                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                startActivity(intent);
-            }
-        });
-
         return root;
     }
 

@@ -1,7 +1,6 @@
 package com.copa.echo;
 
 import android.annotation.SuppressLint;
-import android.app.AlarmManager;
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
@@ -53,12 +52,17 @@ public class SaidItService extends Service {
     /** How many of the most recent events the diagnostics screen keeps. */
     private static final int EVENT_LOG_SIZE = 40;
 
+    /**
+     * Longest the capture loop may sleep between reads. AudioRecord's buffer is sized in bytes,
+     * so at 8 kHz it holds two minutes: sleeping that long would leave the automatic save with an
+     * empty memory and no slack at all before the buffer overruns.
+     */
+    private static final long MAX_READ_INTERVAL_MILLIS = 30000;
+
     volatile int SAMPLE_RATE;
     volatile int FILL_RATE;
 
-    File wavFile;
     AudioRecord audioRecord; // used only in the audio thread
-    WavFileWriter wavFileWriter; // used only in the audio thread
     final AudioMemory audioMemory = new AudioMemory(); // used only in the audio thread
 
     HandlerThread audioThread;
@@ -85,8 +89,15 @@ public class SaidItService extends Service {
     private volatile String lastError = null;
     private volatile long lastErrorMillis = 0;
 
-    /** Resolved lazily because it depends on what the filesystem actually allows. */
+    /** Resolved off the main thread because it probes the filesystem. */
     private volatile File storageDir = null;
+
+    // Cached preferences. Written only by the setters below, read from both threads.
+    private volatile boolean listeningWanted = true;
+    private volatile boolean autoSaveEnabled = true;
+    private volatile int autoSaveIntervalMinutes = AUTO_SAVE_INTERVAL_DEFAULT;
+    private volatile boolean lowPower = false;
+    private volatile long memorySizePref = 0;
 
     /** Guards against a save being started from inside another one. Audio thread only. */
     private boolean writing = false;
@@ -99,7 +110,6 @@ public class SaidItService extends Service {
 
     static final int STATE_READY = 0;
     static final int STATE_LISTENING = 1;
-    static final int STATE_RECORDING = 2;
 
     @Override
     public void onCreate() {
@@ -108,9 +118,16 @@ public class SaidItService extends Service {
 
         mainHandler = new Handler(Looper.getMainLooper());
 
-        final SharedPreferences preferences = this.getSharedPreferences(PACKAGE_NAME, MODE_PRIVATE);
-        SAMPLE_RATE = preferences.getInt(SAMPLE_RATE_KEY, AudioTrack.getNativeOutputSampleRate (AudioManager.STREAM_MUSIC));
-        if(preferences.getBoolean(LOW_POWER_KEY, false)) SAMPLE_RATE = LOW_POWER_SAMPLE_RATE;
+        final SharedPreferences preferences = prefs();
+        listeningWanted = preferences.getBoolean(AUDIO_MEMORY_ENABLED_KEY, true);
+        autoSaveEnabled = preferences.getBoolean(AUTO_SAVE_ENABLED_KEY, true);
+        autoSaveIntervalMinutes = preferences.getInt(AUTO_SAVE_INTERVAL_KEY, AUTO_SAVE_INTERVAL_DEFAULT);
+        lowPower = preferences.getBoolean(LOW_POWER_KEY, false);
+        memorySizePref = preferences.getLong(AUDIO_MEMORY_SIZE_KEY, Runtime.getRuntime().maxMemory() / 4);
+
+        SAMPLE_RATE = lowPower
+                ? LOW_POWER_SAMPLE_RATE
+                : preferences.getInt(SAMPLE_RATE_KEY, AudioTrack.getNativeOutputSampleRate(AudioManager.STREAM_MUSIC));
         Log.d(TAG, "Sample rate: " + SAMPLE_RATE);
         FILL_RATE = 2 * SAMPLE_RATE;
 
@@ -121,9 +138,21 @@ public class SaidItService extends Service {
         createNotificationChannel();
         logEvent(getString(R.string.event_service_started));
 
-        if(preferences.getBoolean(AUDIO_MEMORY_ENABLED_KEY, true)) {
+        // Probing the filesystem is disk work, so keep it off the main thread.
+        audioHandler.post(new Runnable() {
+            @Override
+            public void run() {
+                getRecordingsDir();
+            }
+        });
+
+        if(listeningWanted) {
             innerStartListening();
         }
+    }
+
+    private SharedPreferences prefs() {
+        return getSharedPreferences(PACKAGE_NAME, MODE_PRIVATE);
     }
 
     @Override
@@ -131,9 +160,11 @@ public class SaidItService extends Service {
         logEvent(getString(R.string.event_service_stopped));
         audioHandler.removeCallbacks(autoSaveWatchdog);
         autoSaveDeadline = -1;
-        stopRecording(null, "");
-        innerStopListening();
+        innerStopListening(); // queues a last save of whatever is still in memory
         stopForeground(true);
+        // Lets the queued save run and only then ends the thread, instead of leaking one
+        // HandlerThread per service lifetime.
+        audioThread.quitSafely();
     }
 
     @Override
@@ -147,28 +178,22 @@ public class SaidItService extends Service {
     }
 
     public void enableListening() {
-        getSharedPreferences(PACKAGE_NAME, MODE_PRIVATE)
-                .edit().putBoolean(AUDIO_MEMORY_ENABLED_KEY, true).commit();
+        listeningWanted = true;
+        prefs().edit().putBoolean(AUDIO_MEMORY_ENABLED_KEY, true).apply();
 
         innerStartListening();
         updateNotification();
     }
 
     public void disableListening() {
-        getSharedPreferences(PACKAGE_NAME, MODE_PRIVATE)
-                .edit().putBoolean(AUDIO_MEMORY_ENABLED_KEY, false).commit();
+        listeningWanted = false;
+        prefs().edit().putBoolean(AUDIO_MEMORY_ENABLED_KEY, false).apply();
 
         innerStopListening();
     }
 
     private void innerStartListening() {
-        switch(state) {
-            case STATE_READY:
-                break;
-            case STATE_LISTENING:
-            case STATE_RECORDING:
-                return;
-        }
+        if(state == STATE_LISTENING) return;
         state = STATE_LISTENING;
 
         Log.d(TAG, "Queueing: START LISTENING");
@@ -179,9 +204,17 @@ public class SaidItService extends Service {
         bytesCaptured = 0;
         readErrorCount = 0;
 
-        startService(new Intent(this, this.getClass()));
+        try {
+            startService(new Intent(this, this.getClass()));
+        } catch (Exception e) {
+            // Android refuses to start a service from the background, which is exactly where we
+            // are when the system brings the service back on its own after killing it. Capture
+            // still works while the process lives, so carry on rather than taking it down.
+            Log.e(TAG, "Can't start the service in the foreground", e);
+            recordError(getString(R.string.error_cant_go_foreground));
+        }
 
-        final long memorySize = getSharedPreferences(PACKAGE_NAME, MODE_PRIVATE).getLong(AUDIO_MEMORY_SIZE_KEY, Runtime.getRuntime().maxMemory() / 4);
+        final long memorySize = memorySizePref;
 
         audioHandler.post(new Runnable() {
             @SuppressLint("MissingPermission")
@@ -210,7 +243,8 @@ public class SaidItService extends Service {
                 // The reader has to come back before AudioRecord's own buffer overflows; remember
                 // how long that is so a stalled capture can be told apart from a slow one.
                 final float bufferSeconds = audioRecord.getBufferSizeInFrames() / (float) SAMPLE_RATE;
-                readGapToleranceMillis = Math.max(30000, (long) (bufferSeconds * 3000));
+                readGapToleranceMillis = Math.max(30000, Math.min((long) (bufferSeconds * 3000),
+                        MAX_READ_INTERVAL_MILLIS * 3));
 
                 Log.d(TAG, "Audio: STARTING AudioRecord, buffer " + bufferSeconds + " s");
                 audioMemory.allocate(memorySize);
@@ -225,13 +259,12 @@ public class SaidItService extends Service {
     }
 
     private void innerStopListening() {
-        switch(state) {
-            case STATE_READY:
-            case STATE_RECORDING:
-                return;
-            case STATE_LISTENING:
-                break;
-        }
+        if(state != STATE_LISTENING) return;
+
+        // Everything in memory is audio the user asked us to keep, and the buffers are about to be
+        // handed back. Queued before the release below, so it still sees the audio and the rate.
+        queueSave(ALL_MEMORY, null, null, true);
+
         state = STATE_READY;
         autoSaveDeadline = -1;
         audioHandler.removeCallbacks(autoSaveWatchdog);
@@ -250,6 +283,7 @@ public class SaidItService extends Service {
                     audioRecord = null;
                 }
                 audioHandler.removeCallbacks(audioReader);
+                audioHandler.removeCallbacks(autoSaveWatchdog);
                 audioMemory.allocate(0);
             }
         });
@@ -277,6 +311,11 @@ public class SaidItService extends Service {
     /** Forgets the resolved directory, so the next save probes the filesystem again. */
     public void forgetStorageDir() {
         storageDir = null;
+    }
+
+    /** The resolved directory, or null while it is still being probed. Never touches the disk. */
+    public File getResolvedDir() {
+        return storageDir;
     }
 
     /** Recordings are named after the wall clock time of their first sample, see {@link Recordings}. */
@@ -386,6 +425,9 @@ public class SaidItService extends Service {
         final WavAudioFormat format = new WavAudioFormat.Builder().sampleRate(sampleRate).build();
 
         int written = 0;
+        // Only a file whose riff header was rewritten with its real size is playable, so closing
+        // has to succeed too before the memory it came from can be dropped.
+        boolean complete = false;
         try {
             final WavFileWriter writer = new WavFileWriter(format, file);
             try {
@@ -400,20 +442,24 @@ public class SaidItService extends Service {
                 written = writer.getTotalSampleBytesWritten();
                 writer.close(); // rewrites the riff header with the final size
             }
+            complete = true;
         } catch (IOException e) {
             Log.e(TAG, "Error while writing audio history into " + file.getAbsolutePath(), e);
             recordError(getString(R.string.error_during_writing_history_into) + file.getName());
             if(!silent) showToast(getString(R.string.error_during_writing_history_into) + file.getAbsolutePath());
         }
 
-        if(written <= 0) {
-            // Nothing landed on disk, so keep the memory around for the next attempt.
+        if(written <= 0 || !complete) {
+            // Nothing usable landed on disk, so keep the memory around for the next attempt.
             file.delete();
             return false;
         }
         audioMemory.reset();
 
         Log.d(TAG, "Saved " + written + " B into " + file.getAbsolutePath());
+        // Audio is being kept again, so stop showing whatever failed earlier.
+        lastError = null;
+        lastErrorMillis = 0;
         lastSaveMillis = System.currentTimeMillis();
         lastSaveName = file.getName();
         final float runtime = written / (float) fillRate;
@@ -438,80 +484,20 @@ public class SaidItService extends Service {
         });
     }
 
-    public void startRecording(final float prependedMemorySeconds) {
-        switch(state) {
-            case STATE_READY:
-                innerStartListening();
-                break;
-            case STATE_LISTENING:
-                break;
-            case STATE_RECORDING:
-                return;
-        }
-        state = STATE_RECORDING;
-        updateNotification();
-
-        audioHandler.post(new Runnable() {
-            @Override
-            public void run() {
-                flushAudioRecord();
-                int prependBytes = (int)(prependedMemorySeconds * FILL_RATE);
-                int bytesAvailable = audioMemory.countFilled();
-
-                int skipBytes = Math.max(0, bytesAvailable - prependBytes);
-                final long startMillis = System.currentTimeMillis() - 1000L * (bytesAvailable - skipBytes) / FILL_RATE;
-
-                final File dir = getRecordingsDir();
-                if(!Storage.canWrite(dir)) {
-                    forgetStorageDir();
-                    recordError(getString(R.string.error_cant_write_dir, dir.getAbsolutePath()));
-                    showToast(getString(R.string.error_cant_write_dir, dir.getAbsolutePath()));
-                    return;
-                }
-
-                wavFile = uniqueFile(dir, timestampName(startMillis));
-                WavAudioFormat format = new WavAudioFormat.Builder().sampleRate(SAMPLE_RATE).build();
-                try {
-                    wavFileWriter = new WavFileWriter(format, wavFile);
-                } catch (IOException e) {
-                    final String errorMessage = getString(R.string.cant_create_file) + wavFile.getAbsolutePath();
-                    recordError(errorMessage);
-                    showToast(errorMessage);
-                    Log.e(TAG, errorMessage, e);
-                    return;
-                }
-
-                if(skipBytes < bytesAvailable) {
-                    try {
-                        audioMemory.read(skipBytes, new AudioMemory.Consumer() {
-                            @Override
-                            public int consume(byte[] array, int offset, int count) throws IOException {
-                                wavFileWriter.write(array, offset, count);
-                                return 0;
-                            }
-                        });
-                    } catch (IOException e) {
-                        final String errorMessage = getString(R.string.error_during_writing_history_into) + wavFile.getAbsolutePath();
-                        recordError(errorMessage);
-                        showToast(errorMessage);
-                        Log.e(TAG, errorMessage, e);
-                        stopRecording(new SaidItFragment.NotifyFileReceiver(SaidItService.this), "");
-                    }
-                }
-            }
-        });
-
-    }
-
     public long getMemorySize() {
         return audioMemory.getAllocatedMemorySize();
     }
 
-    public void setMemorySize(final long memorySize) {
-        final SharedPreferences preferences = this.getSharedPreferences(PACKAGE_NAME, MODE_PRIVATE);
-        preferences.edit().putLong(AUDIO_MEMORY_SIZE_KEY, memorySize).commit();
+    /** The size that was asked for, which is what Settings should highlight. */
+    public long getMemorySizePreference() {
+        return memorySizePref;
+    }
 
-        if(preferences.getBoolean(AUDIO_MEMORY_ENABLED_KEY, true)) {
+    public void setMemorySize(final long memorySize) {
+        memorySizePref = memorySize;
+        prefs().edit().putLong(AUDIO_MEMORY_SIZE_KEY, memorySize).apply();
+
+        if(listeningWanted) {
             audioHandler.post(new Runnable() {
                 @Override
                 public void run() {
@@ -536,14 +522,15 @@ public class SaidItService extends Service {
      * Audio memory cannot survive a format change, so whatever is in it is saved first.
      */
     private void applySampleRate(int sampleRate) {
-        if(state == STATE_RECORDING) return; // never change format halfway through a file
         if(sampleRate == SAMPLE_RATE && state != STATE_READY) return;
 
-        getSharedPreferences(PACKAGE_NAME, MODE_PRIVATE).edit().putInt(SAMPLE_RATE_KEY, sampleRate).commit();
+        // The 8 kHz low power mode drops to is not the user's quality choice, so it must not
+        // overwrite it: PRE_LOW_POWER_SAMPLE_RATE_KEY is what brings the real one back.
+        if(!isLowPowerEnabled()) prefs().edit().putInt(SAMPLE_RATE_KEY, sampleRate).apply();
 
         if(state == STATE_LISTENING) {
-            // Queued before the restart below, and it carries the old rate with it.
-            queueSave(ALL_MEMORY, null, null, true);
+            // innerStopListening saves what is in memory, queued before the restart below and
+            // carrying the old rate with it: audio memory cannot survive a format change.
             innerStopListening();
             SAMPLE_RATE = sampleRate;
             FILL_RATE = 2 * sampleRate;
@@ -558,53 +545,10 @@ public class SaidItService extends Service {
         public void fileReady(File file, float runtime);
     }
 
-    public void stopRecording(final WavFileReceiver wavFileReceiver, String newFileName) {
-        switch(state) {
-            case STATE_READY:
-            case STATE_LISTENING:
-                return;
-            case STATE_RECORDING:
-                break;
-        }
-        state = STATE_LISTENING;
-
-        audioHandler.post(new Runnable() {
-            @Override
-            public void run() {
-                flushAudioRecord();
-                final File file = wavFile;
-                int written = 0;
-                try {
-                    written = wavFileWriter.getTotalSampleBytesWritten();
-                    wavFileWriter.close();
-                } catch (IOException e) {
-                    Log.e(TAG, "CLOSING ERROR", e);
-                }
-                wavFileWriter = null;
-                lastSaveMillis = System.currentTimeMillis();
-                lastSaveName = file == null ? null : file.getName();
-                final float runtime = written * getBytesToSeconds();
-                mainHandler.post(new Runnable() {
-                    @Override
-                    public void run() {
-                        updateNotification();
-                        if(wavFileReceiver != null) wavFileReceiver.fileReady(file, runtime);
-                    }
-                });
-            }
-        });
-
-        final SharedPreferences preferences = this.getSharedPreferences(PACKAGE_NAME, MODE_PRIVATE);
-        if(!preferences.getBoolean(AUDIO_MEMORY_ENABLED_KEY, true)) {
-            innerStopListening();
-        } else {
-            armAutoSave();
-        }
-    }
-
     private void flushAudioRecord() {
         // Only allowed on the audio thread
         assert audioHandler.getLooper() == Looper.myLooper();
+        if(audioRecord == null) return; // nothing is capturing, so there is nothing to drain
         audioHandler.removeCallbacks(audioReader); // remove any delayed callbacks
         audioReader.run();
     }
@@ -629,9 +573,6 @@ public class SaidItService extends Service {
                 lastReadElapsed = SystemClock.elapsedRealtime();
                 bytesCaptured += read;
             }
-            if (wavFileWriter != null && read > 0) {
-                wavFileWriter.write(array, offset, read);
-            }
             if (read == count) {
                 // We've filled the buffer, so let's read again.
                 audioHandler.post(audioReader);
@@ -644,7 +585,8 @@ public class SaidItService extends Service {
                 float delaySeconds = bufferSizeInSeconds - 1;
                 delaySeconds = Math.max(delaySeconds, bufferSizeInSeconds * 0.5f);
                 delaySeconds = Math.min(delaySeconds, bufferSizeInSeconds * 0.9f);
-                audioHandler.postDelayed(audioReader, (long)(delaySeconds * 1000));
+                audioHandler.postDelayed(audioReader,
+                        Math.min((long)(delaySeconds * 1000), MAX_READ_INTERVAL_MILLIS));
             }
             return read;
         }
@@ -656,12 +598,8 @@ public class SaidItService extends Service {
             try {
                 audioMemory.fill(filler);
             } catch (IOException e) {
-                final String errorMessage = getString(R.string.error_during_recording_into)
-                        + (wavFile == null ? "" : wavFile.getName());
-                recordError(errorMessage);
-                showToast(errorMessage);
-                Log.e(TAG, errorMessage, e);
-                stopRecording(new SaidItFragment.NotifyFileReceiver(SaidItService.this), "");
+                recordError(getString(R.string.error_capture_failed));
+                Log.e(TAG, "Capture failed", e);
             }
             // Automatic saving rides along with capture: if audio is flowing this runs, and if it
             // is not there is nothing to save anyway.
@@ -675,17 +613,25 @@ public class SaidItService extends Service {
         return getAutoSaveIntervalMinutes() * 60000L;
     }
 
-    /** Sets the next deadline and makes sure the watchdog is pending. */
+    /**
+     * Sets the next deadline and makes sure exactly one watchdog is pending. Runs on the audio
+     * thread, which is also where the watchdog reschedules itself: doing it from the caller's
+     * thread raced with a watchdog that was already running and left two of them pending.
+     */
     private void armAutoSave() {
-        if(state == STATE_READY || !isAutoSaveEnabled()) {
-            autoSaveDeadline = -1;
-            audioHandler.removeCallbacks(autoSaveWatchdog);
-            return;
-        }
-        autoSaveDeadline = SystemClock.elapsedRealtime() + autoSaveIntervalMillis();
-        audioHandler.removeCallbacks(autoSaveWatchdog);
-        audioHandler.postDelayed(autoSaveWatchdog, watchdogPeriodMillis());
-        Log.d(TAG, "Auto-save due in " + (autoSaveIntervalMillis() / 1000) + " s");
+        audioHandler.post(new Runnable() {
+            @Override
+            public void run() {
+                audioHandler.removeCallbacks(autoSaveWatchdog);
+                if(state == STATE_READY || !isAutoSaveEnabled()) {
+                    autoSaveDeadline = -1;
+                    return;
+                }
+                autoSaveDeadline = SystemClock.elapsedRealtime() + autoSaveIntervalMillis();
+                audioHandler.postDelayed(autoSaveWatchdog, watchdogPeriodMillis());
+                Log.d(TAG, "Auto-save due in " + (autoSaveIntervalMillis() / 1000) + " s");
+            }
+        });
     }
 
     /**
@@ -700,9 +646,21 @@ public class SaidItService extends Service {
         return Math.max(3000, Math.min(base, autoSaveIntervalMillis() / 10));
     }
 
+    /** True when the interval is up, so the next save is owed to the user right now. */
+    private boolean autoSaveDue() {
+        final long deadline = autoSaveDeadline;
+        return deadline >= 0 && SystemClock.elapsedRealtime() >= deadline;
+    }
+
     private final Runnable autoSaveWatchdog = new Runnable() {
         @Override
         public void run() {
+            // The interval is up, so drain AudioRecord first: audio only reaches memory when the
+            // capture loop reads, and that loop sleeps for as long as the hardware buffer lasts,
+            // which in low power mode is longer than the whole interval. Saving without this
+            // wrote a file that stopped at the previous read, or found memory empty and wrote
+            // nothing at all while quietly pushing the deadline another interval away.
+            if(autoSaveDue()) flushAudioRecord();
             maybeAutoSave();
             if(state != STATE_READY && isAutoSaveEnabled()) {
                 audioHandler.postDelayed(autoSaveWatchdog, watchdogPeriodMillis());
@@ -744,22 +702,23 @@ public class SaidItService extends Service {
     }
 
     public boolean isAutoSaveEnabled() {
-        return getSharedPreferences(PACKAGE_NAME, MODE_PRIVATE).getBoolean(AUTO_SAVE_ENABLED_KEY, true);
+        return autoSaveEnabled;
     }
 
     public void setAutoSaveEnabled(boolean enabled) {
-        getSharedPreferences(PACKAGE_NAME, MODE_PRIVATE).edit().putBoolean(AUTO_SAVE_ENABLED_KEY, enabled).commit();
+        autoSaveEnabled = enabled;
+        prefs().edit().putBoolean(AUTO_SAVE_ENABLED_KEY, enabled).apply();
         armAutoSave();
         updateNotification();
     }
 
     public int getAutoSaveIntervalMinutes() {
-        return getSharedPreferences(PACKAGE_NAME, MODE_PRIVATE).getInt(AUTO_SAVE_INTERVAL_KEY, AUTO_SAVE_INTERVAL_DEFAULT);
+        return autoSaveIntervalMinutes;
     }
 
     public void setAutoSaveIntervalMinutes(int minutes) {
-        final int clamped = Math.max(1, minutes);
-        getSharedPreferences(PACKAGE_NAME, MODE_PRIVATE).edit().putInt(AUTO_SAVE_INTERVAL_KEY, clamped).commit();
+        autoSaveIntervalMinutes = Math.max(1, minutes);
+        prefs().edit().putInt(AUTO_SAVE_INTERVAL_KEY, autoSaveIntervalMinutes).apply();
         armAutoSave();
         updateNotification();
     }
@@ -767,7 +726,7 @@ public class SaidItService extends Service {
     // ------------------------------------------------------------------ low power mode
 
     public boolean isLowPowerEnabled() {
-        return getSharedPreferences(PACKAGE_NAME, MODE_PRIVATE).getBoolean(LOW_POWER_KEY, false);
+        return lowPower;
     }
 
     /**
@@ -776,19 +735,21 @@ public class SaidItService extends Service {
      * UI slows its refresh down. The previous sample rate comes back when it is switched off.
      */
     public void setLowPowerEnabled(boolean enabled) {
-        final SharedPreferences preferences = getSharedPreferences(PACKAGE_NAME, MODE_PRIVATE);
-        if(enabled == preferences.getBoolean(LOW_POWER_KEY, false)) return;
+        if(enabled == lowPower) return;
+        final SharedPreferences preferences = prefs();
 
         if(enabled) {
+            lowPower = true;
             preferences.edit()
                     .putBoolean(LOW_POWER_KEY, true)
                     .putInt(PRE_LOW_POWER_SAMPLE_RATE_KEY, SAMPLE_RATE)
-                    .commit();
+                    .apply();
             logEvent(getString(R.string.event_low_power_on));
             applySampleRate(LOW_POWER_SAMPLE_RATE);
         } else {
             final int previous = preferences.getInt(PRE_LOW_POWER_SAMPLE_RATE_KEY, SAMPLE_RATE);
-            preferences.edit().putBoolean(LOW_POWER_KEY, false).commit();
+            lowPower = false;
+            preferences.edit().putBoolean(LOW_POWER_KEY, false).apply();
             logEvent(getString(R.string.event_low_power_off, previous / 1000f));
             applySampleRate(previous);
         }
@@ -800,13 +761,10 @@ public class SaidItService extends Service {
     /** Everything the UI needs to draw the current state of the recorder. */
     public static class State {
         public boolean listeningEnabled;
-        public boolean recording;
         /** Seconds of audio currently held in memory. */
         public float memorized;
         /** Seconds of audio memory can hold. */
         public float totalMemory;
-        /** Seconds already written into the file of an ongoing file recording. */
-        public float recorded;
         public boolean autoSaveEnabled;
         public int autoSaveIntervalMinutes;
         /** Milliseconds until the next automatic save, or -1 when none is due. */
@@ -847,10 +805,8 @@ public class SaidItService extends Service {
     }
 
     public void getState(final StateCallback stateCallback) {
-        final SharedPreferences preferences = this.getSharedPreferences(PACKAGE_NAME, MODE_PRIVATE);
         final State result = new State();
-        result.listeningEnabled = preferences.getBoolean(AUDIO_MEMORY_ENABLED_KEY, true);
-        result.recording = (state == STATE_RECORDING);
+        result.listeningEnabled = listeningWanted;
         result.autoSaveEnabled = isAutoSaveEnabled();
         result.autoSaveIntervalMinutes = getAutoSaveIntervalMinutes();
         final long deadline = autoSaveDeadline;
@@ -865,9 +821,11 @@ public class SaidItService extends Service {
         result.readErrorCount = readErrorCount;
         result.lastError = lastError;
         result.lastErrorMillis = lastErrorMillis;
-        final File dir = getRecordingsDir();
-        result.storagePath = dir.getAbsolutePath();
-        result.storagePublic = Storage.isPublic(this, dir);
+        // Deliberately the cached value: resolving probes the filesystem and this runs on the
+        // main thread once a second.
+        final File dir = storageDir;
+        result.storagePath = (dir == null) ? null : dir.getAbsolutePath();
+        result.storagePublic = dir != null && Storage.isPublic(this, dir);
 
         final long lastRead = lastReadElapsed;
         if(state == STATE_READY) {
@@ -890,16 +848,9 @@ public class SaidItService extends Service {
             public void run() {
                 flushAudioRecord();
                 final AudioMemory.Stats stats = audioMemory.getStats(FILL_RATE);
-
-                int recorded = 0;
-                if(wavFileWriter != null) {
-                    recorded += wavFileWriter.getTotalSampleBytesWritten();
-                    recorded += stats.estimation;
-                }
                 final float bytesToSeconds = getBytesToSeconds();
                 result.memorized = (stats.overwriting ? stats.total : stats.filled + stats.estimation) * bytesToSeconds;
                 result.totalMemory = stats.total * bytesToSeconds;
-                result.recorded = recorded * bytesToSeconds;
                 result.intervalExceedsMemory = result.autoSaveEnabled && result.totalMemory > 0
                         && result.autoSaveIntervalMinutes * 60f > result.totalMemory;
                 mainHandler.post(new Runnable() {
@@ -962,20 +913,6 @@ public class SaidItService extends Service {
         return START_STICKY;
     }
 
-    // Workaround for bug where recent app removal caused service to stop
-    @Override
-    public void onTaskRemoved(Intent rootIntent) {
-        Intent restartServiceIntent = new Intent(getApplicationContext(), this.getClass());
-        restartServiceIntent.setPackage(getPackageName());
-
-        PendingIntent restartServicePendingIntent = PendingIntent.getService(this, 1, restartServiceIntent, PendingIntent.FLAG_ONE_SHOT| PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
-        AlarmManager alarmService = (AlarmManager) getSystemService(ALARM_SERVICE);
-        alarmService.set(
-                AlarmManager.ELAPSED_REALTIME,
-                SystemClock.elapsedRealtime() + 1000,
-                restartServicePendingIntent);
-    }
-
     private void createNotificationChannel() {
         NotificationChannel channel = new NotificationChannel(
                 NOTIFICATION_CHANNEL_ID,
@@ -991,10 +928,8 @@ public class SaidItService extends Service {
         Intent intent = new Intent(this, SaidItActivity.class);
         PendingIntent pendingIntent = PendingIntent.getActivity(this, 0, intent, PendingIntent.FLAG_IMMUTABLE);
 
-        final int title;
-        if(state == STATE_RECORDING) title = R.string.notification_recording_to_file;
-        else if(state == STATE_LISTENING) title = R.string.notification_listening;
-        else title = R.string.notification_idle;
+        final int title = (state == STATE_LISTENING)
+                ? R.string.notification_listening : R.string.notification_idle;
 
         String detail;
         if(state == STATE_READY) {
