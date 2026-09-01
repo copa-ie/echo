@@ -261,6 +261,47 @@ public class DiagnosticsActivity extends Activity {
         addRow(getString(R.string.diagnostics_read_errors), String.valueOf(state.readErrorCount),
                 state.readErrorCount == 0 ? OK : BAD);
 
+        // --- sharing the microphone with other apps ---
+        if (state.listeningEnabled) {
+            addRow(getString(R.string.diagnostics_mic_shared), value(state.micSilenced || state.micBlocked),
+                    (state.micSilenced || state.micBlocked) ? BAD : OK);
+            if (state.micSilenced || state.micBlocked) {
+                addRow("", getString(R.string.diagnostics_mic_shared_note), INFO);
+            }
+            if (state.inCall) {
+                addRow(getString(R.string.diagnostics_in_call), value(true), BAD);
+            }
+        }
+        if (state.micTakeoverCount > 0) {
+            addRow(getString(R.string.diagnostics_mic_takeovers), String.valueOf(state.micTakeoverCount), INFO);
+        }
+
+        // --- GPS logging ---
+        addRow(getString(R.string.diagnostics_gps), value(state.gpsEnabled), state.gpsEnabled ? OK : INFO);
+        if (state.gpsEnabled) {
+            addRow(getString(R.string.diagnostics_gps_permission), value(state.gpsPermission),
+                    state.gpsPermission ? OK : BAD);
+            addRow(getString(R.string.diagnostics_gps_provider), value(state.gpsProviderEnabled),
+                    state.gpsProviderEnabled ? OK : BAD);
+            addRow(getString(R.string.diagnostics_gps_fixes), String.valueOf(state.fixCount),
+                    state.fixCount > 0 ? OK : INFO);
+            addRow(getString(R.string.diagnostics_gps_last_fix),
+                    state.lastFixMillis == 0
+                            ? getString(R.string.diagnostics_never)
+                            : DateFormat.getTimeFormat(this).format(new Date(state.lastFixMillis))
+                                    + (state.lastFixAccuracy < 0 ? ""
+                                            : "  " + getString(R.string.diagnostics_gps_accuracy, state.lastFixAccuracy)),
+                    state.lastFixMillis == 0 ? INFO : OK);
+            addRow(getString(R.string.diagnostics_gps_buffered), String.valueOf(state.trackPoints), INFO);
+            addRow(getString(R.string.diagnostics_gps_tracks), String.valueOf(state.trackSaveCount)
+                    + (state.lastTrackName == null ? "" : "  " + state.lastTrackName),
+                    state.trackSaveCount > 0 ? OK : INFO);
+            if (state.listeningEnabled && state.gpsPermission && state.gpsProviderEnabled
+                    && state.lastFixMillis == 0) {
+                addRow("", getString(R.string.diagnostics_gps_no_fix_note), INFO);
+            }
+        }
+
         // --- memory and automatic saving ---
         addRow(getString(R.string.diagnostics_memory),
                 TimeFormat.shortTimer(state.memorized) + " / " + TimeFormat.shortTimer(state.totalMemory), INFO);

@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:id="@+id/recordings_layout"
+    android:id="@+id/traces_layout"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical">
@@ -13,7 +13,7 @@
         everything else instead of competing for room.
     -->
     <ListView
-        android:id="@+id/recordings_list"
+        android:id="@+id/traces_list"
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
@@ -22,7 +22,7 @@
         android:scrollbarStyle="outsideOverlay" />
 
     <Button
-        android:id="@+id/recordings_return"
+        android:id="@+id/traces_return"
         style="@style/Button"
         android:layout_marginTop="10dp"
         android:layout_marginBottom="20dp"

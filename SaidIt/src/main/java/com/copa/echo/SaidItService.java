@@ -10,9 +10,14 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.ServiceInfo;
+import android.content.pm.PackageManager;
+import android.location.Location;
+import android.location.LocationListener;
+import android.location.LocationManager;
 import android.media.AudioFormat;
 import android.media.AudioManager;
 import android.media.AudioRecord;
+import android.media.AudioRecordingConfiguration;
 import android.media.AudioTrack;
 import android.media.MediaRecorder;
 import android.os.Binder;
@@ -59,11 +64,24 @@ public class SaidItService extends Service {
      */
     private static final long MAX_READ_INTERVAL_MILLIS = 30000;
 
+    /** How often the microphone is checked for being closed, stalled or handed back. */
+    private static final long CAPTURE_WATCHDOG_MILLIS = 15000;
+    private static final long CAPTURE_WATCHDOG_MILLIS_LOW_POWER = 30000;
+    /** Longest wait between attempts to open a microphone another app is holding. */
+    private static final long MAX_MIC_RETRY_MILLIS = 15000;
+    /** Consecutive failed reads before the AudioRecord is thrown away and opened again. */
+    private static final int READ_ERRORS_BEFORE_RESTART = 5;
+
     volatile int SAMPLE_RATE;
     volatile int FILL_RATE;
 
     AudioRecord audioRecord; // used only in the audio thread
     final AudioMemory audioMemory = new AudioMemory(); // used only in the audio thread
+    /**
+     * Session id of the AudioRecord above, or 0 when there is none. The recording callback runs
+     * on the main thread and this is the only way for it to recognise our own capture.
+     */
+    private volatile int audioSessionId = 0;
 
     HandlerThread audioThread;
     Handler audioHandler; // used to post messages to audio thread
@@ -88,6 +106,32 @@ public class SaidItService extends Service {
 
     private volatile String lastError = null;
     private volatile long lastErrorMillis = 0;
+
+    /** True while the microphone cannot be opened at all, so reopening is being retried. */
+    private volatile boolean micBlocked = false;
+    /** Failed attempts to open the microphone since the last successful one; drives the backoff. */
+    private volatile int micRetries = 0;
+    /** True while Android is feeding us silence because another app has priority on the input. */
+    private volatile boolean micSilenced = false;
+    /** How many times the microphone has been taken away during this capture. */
+    private volatile int micTakeoverCount = 0;
+    /** Failed reads in a row, reset by any read that returns audio. Audio thread only. */
+    private int consecutiveReadErrors = 0;
+
+    /** Buffered location fixes, written as a GPX track beside the audio they belong to. */
+    final GpxTrack track = new GpxTrack();
+    private LocationManager locationManager;
+    private AudioManager audioManager;
+    private volatile boolean gpsEnabled = false;
+    /** True while location updates are actually registered, so they are never asked for twice. */
+    private volatile boolean gpsRequested = false;
+    /** The update interval currently registered with the system, or 0 when none is. */
+    private volatile long gpsIntervalMillis = 0;
+    private volatile long lastFixMillis = 0;
+    private volatile float lastFixAccuracy = -1;
+    private volatile int fixCount = 0;
+    private volatile int trackSaveCount = 0;
+    private volatile String lastTrackName = null;
 
     /** Resolved off the main thread because it probes the filesystem. */
     private volatile File storageDir = null;
@@ -123,6 +167,7 @@ public class SaidItService extends Service {
         autoSaveEnabled = preferences.getBoolean(AUTO_SAVE_ENABLED_KEY, true);
         autoSaveIntervalMinutes = preferences.getInt(AUTO_SAVE_INTERVAL_KEY, AUTO_SAVE_INTERVAL_DEFAULT);
         lowPower = preferences.getBoolean(LOW_POWER_KEY, false);
+        gpsEnabled = preferences.getBoolean(GPS_ENABLED_KEY, false);
         memorySizePref = preferences.getLong(AUDIO_MEMORY_SIZE_KEY, Runtime.getRuntime().maxMemory() / 4);
 
         SAMPLE_RATE = lowPower
@@ -136,13 +181,14 @@ public class SaidItService extends Service {
         audioHandler = new Handler(audioThread.getLooper());
 
         createNotificationChannel();
+        registerRecordingCallback();
         logEvent(getString(R.string.event_service_started));
 
         // Probing the filesystem is disk work, so keep it off the main thread.
         audioHandler.post(new Runnable() {
             @Override
             public void run() {
-                getRecordingsDir();
+                getTracesDir();
             }
         });
 
@@ -158,6 +204,7 @@ public class SaidItService extends Service {
     @Override
     public void onDestroy() {
         logEvent(getString(R.string.event_service_stopped));
+        unregisterRecordingCallback();
         audioHandler.removeCallbacks(autoSaveWatchdog);
         autoSaveDeadline = -1;
         innerStopListening(); // queues a last save of whatever is still in memory
@@ -203,6 +250,10 @@ public class SaidItService extends Service {
         lastReadElapsed = 0;
         bytesCaptured = 0;
         readErrorCount = 0;
+        micTakeoverCount = 0;
+        micRetries = 0;
+        micSilenced = false;
+        micBlocked = false;
 
         try {
             startService(new Intent(this, this.getClass()));
@@ -217,44 +268,17 @@ public class SaidItService extends Service {
         final long memorySize = memorySizePref;
 
         audioHandler.post(new Runnable() {
-            @SuppressLint("MissingPermission")
             @Override
             public void run() {
                 Log.d(TAG, "Executing: START LISTENING");
-                Log.d(TAG, "Audio: INITIALIZING AUDIO_RECORD");
-
-                audioRecord = new AudioRecord(
-                       MediaRecorder.AudioSource.MIC,
-                       SAMPLE_RATE,
-                       AudioFormat.CHANNEL_IN_MONO,
-                       AudioFormat.ENCODING_PCM_16BIT,
-                       AudioMemory.CHUNK_SIZE);
-
-                if(audioRecord.getState() != AudioRecord.STATE_INITIALIZED) {
-                    Log.e(TAG, "Audio: INITIALIZATION ERROR - releasing resources");
-                    recordError(getString(R.string.error_mic_unavailable));
-                    audioRecord.release();
-                    audioRecord = null;
-                    state = STATE_READY;
-                    autoSaveDeadline = -1;
-                    return;
-                }
-
-                // The reader has to come back before AudioRecord's own buffer overflows; remember
-                // how long that is so a stalled capture can be told apart from a slow one.
-                final float bufferSeconds = audioRecord.getBufferSizeInFrames() / (float) SAMPLE_RATE;
-                readGapToleranceMillis = Math.max(30000, Math.min((long) (bufferSeconds * 3000),
-                        MAX_READ_INTERVAL_MILLIS * 3));
-
-                Log.d(TAG, "Audio: STARTING AudioRecord, buffer " + bufferSeconds + " s");
                 audioMemory.allocate(memorySize);
-
-                audioRecord.startRecording();
-                audioHandler.post(audioReader);
+                openAudioRecord();
             }
         });
 
         armAutoSave();
+        armCaptureWatchdog();
+        startLocationUpdates();
         logEvent(getString(R.string.event_listening_started, SAMPLE_RATE / 1000f));
     }
 
@@ -267,7 +291,11 @@ public class SaidItService extends Service {
 
         state = STATE_READY;
         autoSaveDeadline = -1;
+        micSilenced = false;
+        micBlocked = false;
         audioHandler.removeCallbacks(autoSaveWatchdog);
+        // Location stops with the audio it annotates; the save queued above takes the fixes with it.
+        stopLocationUpdates();
         Log.d(TAG, "Queueing: STOP LISTENING");
         logEvent(getString(R.string.event_listening_stopped));
 
@@ -278,30 +306,274 @@ public class SaidItService extends Service {
             @Override
             public void run() {
                 Log.d(TAG, "Executing: STOP LISTENING");
-                if(audioRecord != null) {
-                    audioRecord.release();
-                    audioRecord = null;
-                }
+                releaseAudioRecord();
                 audioHandler.removeCallbacks(audioReader);
+                audioHandler.removeCallbacks(audioOpener);
                 audioHandler.removeCallbacks(autoSaveWatchdog);
+                audioHandler.removeCallbacks(captureWatchdog);
                 audioMemory.allocate(0);
             }
         });
 
     }
 
+    // ------------------------------------------------------------------ the microphone
+
+    /**
+     * Opens the microphone and starts the capture loop. Audio thread only.
+     *
+     * Failing to open is not the end of the capture: the usual reason is another app holding the
+     * input, and that app will hand it back. So a failure schedules another attempt instead of
+     * dropping to STATE_READY, which used to leave the service alive but permanently deaf.
+     */
+    @SuppressLint("MissingPermission")
+    private void openAudioRecord() {
+        assert audioHandler.getLooper() == Looper.myLooper();
+        if(state != STATE_LISTENING) return;
+        if(audioRecord != null) return;
+
+        Log.d(TAG, "Audio: INITIALIZING AUDIO_RECORD");
+        AudioRecord record = null;
+        try {
+            record = new AudioRecord.Builder()
+                    .setAudioSource(MediaRecorder.AudioSource.MIC)
+                    .setAudioFormat(new AudioFormat.Builder()
+                            .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                            .setSampleRate(SAMPLE_RATE)
+                            .setChannelMask(AudioFormat.CHANNEL_IN_MONO)
+                            .build())
+                    .setBufferSizeInBytes(AudioMemory.CHUNK_SIZE)
+                    // Says our capture does not need the input to itself, which is what lets
+                    // another app record at the same time where the platform allows it at all.
+                    .setPrivacySensitive(false)
+                    .build();
+        } catch (Exception e) {
+            Log.e(TAG, "Audio: can't build an AudioRecord", e);
+        }
+
+        if(record != null && record.getState() != AudioRecord.STATE_INITIALIZED) {
+            record.release();
+            record = null;
+        }
+        if(record != null) {
+            try {
+                record.startRecording();
+            } catch (IllegalStateException e) {
+                Log.e(TAG, "Audio: startRecording refused", e);
+            }
+            if(record.getRecordingState() != AudioRecord.RECORDSTATE_RECORDING) {
+                // startRecording also fails quietly when the input is already spoken for.
+                Log.e(TAG, "Audio: startRecording did not take");
+                record.release();
+                record = null;
+            }
+        }
+        if(record == null) {
+            retryOpeningTheMicrophone();
+            return;
+        }
+
+        // The reader has to come back before AudioRecord's own buffer overflows; remember
+        // how long that is so a stalled capture can be told apart from a slow one.
+        final float bufferSeconds = record.getBufferSizeInFrames() / (float) SAMPLE_RATE;
+        readGapToleranceMillis = Math.max(30000, Math.min((long) (bufferSeconds * 3000),
+                MAX_READ_INTERVAL_MILLIS * 3));
+        Log.d(TAG, "Audio: STARTED AudioRecord, buffer " + bufferSeconds + " s");
+
+        audioRecord = record;
+        audioSessionId = record.getAudioSessionId();
+        captureStartedElapsed = SystemClock.elapsedRealtime();
+        // Nothing has been read from *this* AudioRecord yet, and leaving the previous one's time
+        // in place would have the watchdog judge a brand new capture by how long the old one was
+        // silent for, and restart it on the spot.
+        lastReadElapsed = 0;
+        consecutiveReadErrors = 0;
+
+        if(micBlocked) {
+            micBlocked = false;
+            clearLastError();
+            logEvent(getString(R.string.event_mic_regained));
+            mainHandler.post(notificationUpdater);
+        }
+        micRetries = 0;
+
+        audioHandler.removeCallbacks(audioReader);
+        audioHandler.post(audioReader);
+    }
+
+    /** Backs off between attempts, so a microphone held for an hour costs almost nothing. */
+    private void retryOpeningTheMicrophone() {
+        ++micRetries;
+        if(!micBlocked) {
+            micBlocked = true;
+            recordError(getString(R.string.error_mic_unavailable));
+            mainHandler.post(notificationUpdater);
+        }
+        final long delay = Math.min(2000L * micRetries, MAX_MIC_RETRY_MILLIS);
+        Log.w(TAG, "Audio: microphone unavailable, retrying in " + delay + " ms");
+        audioHandler.removeCallbacks(audioOpener);
+        audioHandler.postDelayed(audioOpener, delay);
+    }
+
+    private final Runnable audioOpener = new Runnable() {
+        @Override
+        public void run() {
+            openAudioRecord();
+        }
+    };
+
+    /** Hands the microphone back. Audio thread only. */
+    private void releaseAudioRecord() {
+        if(audioRecord == null) return;
+        try {
+            audioRecord.stop();
+        } catch (IllegalStateException e) {
+            Log.w(TAG, "Audio: stop refused, releasing anyway", e);
+        }
+        audioRecord.release();
+        audioRecord = null;
+        audioSessionId = 0;
+    }
+
+    /**
+     * Throws the current AudioRecord away and opens a fresh one, keeping audio memory: the
+     * format does not change, so what was already captured stays valid and the recording simply
+     * continues. Whatever the old one still held is drained first.
+     */
+    private void restartAudioRecord(final String reason) {
+        audioHandler.post(new Runnable() {
+            @Override
+            public void run() {
+                if(state != STATE_LISTENING) return;
+                Log.d(TAG, "Audio: restarting capture, " + reason);
+                flushAudioRecord();
+                audioHandler.removeCallbacks(audioReader);
+                releaseAudioRecord();
+                openAudioRecord();
+            }
+        });
+    }
+
+    private long captureWatchdogPeriodMillis() {
+        return isLowPowerEnabled() ? CAPTURE_WATCHDOG_MILLIS_LOW_POWER : CAPTURE_WATCHDOG_MILLIS;
+    }
+
+    private void armCaptureWatchdog() {
+        audioHandler.post(new Runnable() {
+            @Override
+            public void run() {
+                audioHandler.removeCallbacks(captureWatchdog);
+                if(state != STATE_LISTENING) return;
+                audioHandler.postDelayed(captureWatchdog, captureWatchdogPeriodMillis());
+            }
+        });
+    }
+
+    /**
+     * The last line of defence against a capture that stopped without saying so. Everything else
+     * here reacts to something Android told us; this one only looks at whether audio is actually
+     * arriving, so it also covers the failures nobody reports.
+     */
+    private final Runnable captureWatchdog = new Runnable() {
+        @Override
+        public void run() {
+            if(state != STATE_LISTENING) return;
+
+            if(audioRecord == null) {
+                // Either the open failed and the retry is still pending, or something released it
+                // behind our back. Either way, asking again is the whole fix.
+                openAudioRecord();
+            } else if(!micSilenced) {
+                // While silenced the reads keep succeeding with zeros, so this check would never
+                // fire anyway; the recording callback owns that case.
+                final long last = lastReadElapsed;
+                final long since = SystemClock.elapsedRealtime()
+                        - (last == 0 ? captureStartedElapsed : last);
+                if(since > readGapToleranceMillis) {
+                    logEvent(getString(R.string.event_capture_stalled, since / 1000));
+                    restartAudioRecord("no audio for " + (since / 1000) + " s");
+                }
+            }
+
+            audioHandler.postDelayed(captureWatchdog, captureWatchdogPeriodMillis());
+        }
+    };
+
+    // ---------------------------------------------------------- sharing the microphone
+
+    /**
+     * Android does not let two apps have the same microphone: when a call or another recorder
+     * outranks us, our capture is not stopped, it is fed silence. Without this we would happily
+     * write minutes of digital zeros and call it a recording.
+     */
+    private final AudioManager.AudioRecordingCallback recordingCallback =
+            new AudioManager.AudioRecordingCallback() {
+        @Override
+        public void onRecordingConfigChanged(List<AudioRecordingConfiguration> configurations) {
+            final int session = audioSessionId;
+            if(session == 0 || configurations == null) return;
+
+            boolean silenced = false;
+            boolean found = false;
+            for (AudioRecordingConfiguration configuration : configurations) {
+                if(configuration.getClientAudioSessionId() != session) continue;
+                found = true;
+                silenced = configuration.isClientSilenced();
+            }
+            if(!found) return; // not about our capture
+
+            if(silenced == micSilenced) return;
+            micSilenced = silenced;
+            if(silenced) {
+                ++micTakeoverCount;
+                logEvent(getString(R.string.event_mic_taken));
+            } else {
+                logEvent(getString(R.string.event_mic_returned));
+                // The input is ours again. A fresh AudioRecord is cheap and, unlike the silenced
+                // one, is guaranteed to be delivering real audio from its first sample.
+                restartAudioRecord("the microphone was handed back");
+            }
+            updateNotification();
+        }
+    };
+
+    private AudioManager audioManager() {
+        if(audioManager == null) audioManager = getSystemService(AudioManager.class);
+        return audioManager;
+    }
+
+    private void registerRecordingCallback() {
+        final AudioManager manager = audioManager();
+        if(manager == null) return;
+        manager.registerAudioRecordingCallback(recordingCallback, mainHandler);
+    }
+
+    private void unregisterRecordingCallback() {
+        final AudioManager manager = audioManager();
+        if(manager == null) return;
+        manager.unregisterAudioRecordingCallback(recordingCallback);
+    }
+
+    /** True while the phone is in a call, which is the one case no app can record around. */
+    private boolean inCall() {
+        final AudioManager manager = audioManager();
+        if(manager == null) return false;
+        final int mode = manager.getMode();
+        return mode == AudioManager.MODE_IN_CALL || mode == AudioManager.MODE_IN_COMMUNICATION;
+    }
+
     // ------------------------------------------------------------------ storage
 
     /**
-     * Directory recordings are written to. Resolved on first use by actually probing the
+     * Directory traces are written to. Resolved on first use by actually probing the
      * filesystem, see {@link Storage}.
      */
-    public File getRecordingsDir() {
+    public File getTracesDir() {
         File dir = storageDir;
         if(dir == null) {
             dir = Storage.resolve(this);
             storageDir = dir;
-            if(!Storage.isPublic(this, dir)) {
+            if(!Storage.isPublic(dir)) {
                 logEvent(getString(R.string.event_storage_fallback, dir.getAbsolutePath()));
             }
         }
@@ -318,17 +590,24 @@ public class SaidItService extends Service {
         return storageDir;
     }
 
-    /** Recordings are named after the wall clock time of their first sample, see {@link Recordings}. */
+    /** Traces are named after the wall clock time of their first sample, see {@link Traces}. */
     private static String timestampName(long millis) {
         return new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(new Date(millis));
     }
 
-    private static File uniqueFile(File dir, String baseName) {
-        File file = new File(dir, baseName + ".wav");
+    private static File uniqueFile(File dir, String baseName, String extension) {
+        File file = new File(dir, baseName + extension);
         for(int i = 2; file.exists(); ++i) {
-            file = new File(dir, baseName + "_" + i + ".wav");
+            file = new File(dir, baseName + "_" + i + extension);
         }
         return file;
+    }
+
+    /** A file name without its extension, which is the name its companion track shares. */
+    private static String baseNameOf(File file) {
+        final String name = file.getName();
+        final int dot = name.lastIndexOf('.');
+        return (dot < 0) ? name : name.substring(0, dot);
     }
 
     // ------------------------------------------------------------------ saving
@@ -397,7 +676,10 @@ public class SaidItService extends Service {
                                         final WavFileReceiver wavFileReceiver, boolean silent,
                                         int sampleRate, int fillRate) {
         final int bytesAvailable = audioMemory.countFilled();
-        if(bytesAvailable <= 0) {
+        final boolean haveAudio = bytesAvailable > 0;
+        // Fixes recorded while the microphone was busy are still worth keeping, so an empty audio
+        // memory is only nothing to save when the track is empty too.
+        if(!haveAudio && track.size() == 0) {
             Log.d(TAG, "Nothing to save, audio memory is empty");
             if(!silent) showToast(getString(R.string.nothing_to_save));
             return false;
@@ -409,7 +691,7 @@ public class SaidItService extends Service {
             skipBytes = (int) Math.max(0, bytesAvailable - keepBytes);
         }
 
-        final File dir = getRecordingsDir();
+        final File dir = getTracesDir();
         if(!Storage.canWrite(dir)) {
             // Whatever we resolved to is not usable any more; probe again next time.
             forgetStorageDir();
@@ -418,10 +700,18 @@ public class SaidItService extends Service {
             return false;
         }
 
+        if(!haveAudio) {
+            // Only location to keep. It gets named after its own first fix, since there is no
+            // recording for it to take its name from.
+            writeTrack(dir, null);
+            if(!silent) showToast(getString(R.string.nothing_to_save));
+            return false;
+        }
+
         final int useBytes = bytesAvailable - skipBytes;
         final long startMillis = System.currentTimeMillis() - 1000L * useBytes / fillRate;
         final File file = uniqueFile(dir,
-                (baseName == null || baseName.isEmpty()) ? timestampName(startMillis) : baseName);
+                (baseName == null || baseName.isEmpty()) ? timestampName(startMillis) : baseName, ".wav");
         final WavAudioFormat format = new WavAudioFormat.Builder().sampleRate(sampleRate).build();
 
         int written = 0;
@@ -455,6 +745,8 @@ public class SaidItService extends Service {
             return false;
         }
         audioMemory.reset();
+        // Same base name as the recording, so a file and its track are obviously a pair.
+        writeTrack(dir, baseNameOf(file));
 
         Log.d(TAG, "Saved " + written + " B into " + file.getAbsolutePath());
         // Audio is being kept again, so stop showing whatever failed earlier.
@@ -464,7 +756,7 @@ public class SaidItService extends Service {
         lastSaveName = file.getName();
         final float runtime = written / (float) fillRate;
         logEvent(getString(R.string.event_saved, file.getName(),
-                RecordingsActivity.longDuration((long) (runtime * 1000))));
+                TracesActivity.longDuration((long) (runtime * 1000))));
         mainHandler.post(new Runnable() {
             @Override
             public void run() {
@@ -553,6 +845,156 @@ public class SaidItService extends Service {
         audioReader.run();
     }
 
+    // ------------------------------------------------------------------ location
+
+    /**
+     * Location fixes are logged for exactly as long as audio is being captured, and written out
+     * by the same saves, so every recording has a track of where it was made under the same name
+     * with a .gpx extension.
+     */
+    public boolean isGpsEnabled() {
+        return gpsEnabled;
+    }
+
+    public void setGpsEnabled(boolean enabled) {
+        if(enabled == gpsEnabled) return;
+        gpsEnabled = enabled;
+        prefs().edit().putBoolean(GPS_ENABLED_KEY, enabled).apply();
+
+        if(enabled) {
+            logEvent(getString(R.string.event_gps_on));
+            // The foreground service has to declare that it uses location before it may, and it
+            // was started without that type back when logging was off.
+            refreshForegroundType();
+            startLocationUpdates();
+        } else {
+            stopLocationUpdates();
+            logEvent(getString(R.string.event_gps_off));
+            // Fixes already taken belong to audio still in memory, so they go out with it rather
+            // than being thrown away here.
+            refreshForegroundType();
+        }
+        updateNotification();
+    }
+
+    public boolean hasLocationPermission() {
+        return checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION)
+                == PackageManager.PERMISSION_GRANTED;
+    }
+
+    /** True when the GPS provider itself is switched on, which no permission can substitute for. */
+    public boolean isGpsProviderEnabled() {
+        final LocationManager manager = locationManager();
+        try {
+            return manager != null && manager.isProviderEnabled(LocationManager.GPS_PROVIDER);
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private LocationManager locationManager() {
+        if(locationManager == null) locationManager = getSystemService(LocationManager.class);
+        return locationManager;
+    }
+
+    private final LocationListener locationListener = new LocationListener() {
+        @Override
+        public void onLocationChanged(Location location) {
+            track.add(location);
+            lastFixMillis = System.currentTimeMillis();
+            lastFixAccuracy = location.hasAccuracy() ? location.getAccuracy() : -1;
+            ++fixCount;
+        }
+
+        @Override
+        public void onProviderDisabled(String provider) {
+            logEvent(getString(R.string.event_gps_provider_off));
+        }
+
+        @Override
+        public void onProviderEnabled(String provider) {
+            logEvent(getString(R.string.event_gps_provider_on));
+        }
+    };
+
+    @SuppressLint("MissingPermission")
+    private void startLocationUpdates() {
+        if(!gpsEnabled || state != STATE_LISTENING) return;
+        if(gpsRequested) return;
+        if(!hasLocationPermission()) {
+            recordError(getString(R.string.error_no_location_permission));
+            return;
+        }
+        final LocationManager manager = locationManager();
+        if(manager == null) return;
+
+        final long interval = wantedGpsIntervalMillis();
+        try {
+            // Fixes are delivered on the main thread, which is where the buffer expects them; it
+            // is synchronized precisely because saves read it from the audio thread.
+            manager.requestLocationUpdates(LocationManager.GPS_PROVIDER, interval, 0f,
+                    locationListener, Looper.getMainLooper());
+            gpsRequested = true;
+            gpsIntervalMillis = interval;
+            logEvent(getString(R.string.event_gps_started, interval / 1000f));
+        } catch (SecurityException e) {
+            recordError(getString(R.string.error_no_location_permission));
+        } catch (IllegalArgumentException e) {
+            // A device with no GPS hardware at all. Nothing to log, and nothing to fix either.
+            recordError(getString(R.string.error_no_gps_provider));
+        }
+    }
+
+    /** How often a fix is wanted, which low power mode is the only thing that changes. */
+    private long wantedGpsIntervalMillis() {
+        return isLowPowerEnabled() ? LOW_POWER_GPS_INTERVAL_MILLIS : GPS_INTERVAL_MILLIS;
+    }
+
+    private void stopLocationUpdates() {
+        if(!gpsRequested) return;
+        gpsRequested = false;
+        gpsIntervalMillis = 0;
+        final LocationManager manager = locationManager();
+        if(manager == null) return;
+        try {
+            manager.removeUpdates(locationListener);
+        } catch (Exception e) {
+            Log.w(TAG, "Can't stop location updates", e);
+        }
+        logEvent(getString(R.string.event_gps_stopped));
+    }
+
+    /**
+     * Writes the buffered fixes into a GPX file and empties the buffer. Audio thread only, from
+     * inside a save, so a track never gets split across two recordings.
+     */
+    private void writeTrack(File dir, String baseName) {
+        if(track.size() == 0) return;
+
+        final String name = (baseName == null || baseName.isEmpty())
+                ? timestampName(track.firstFixMillis()) : baseName;
+        final File file = uniqueFile(dir, name, ".gpx");
+        final int dropped = track.droppedCount();
+
+        int points = 0;
+        try {
+            points = track.writeTo(file, name);
+        } catch (IOException e) {
+            Log.e(TAG, "Error while writing the track into " + file.getAbsolutePath(), e);
+            recordError(getString(R.string.error_cant_write_track, file.getName()));
+            return;
+        }
+
+        if(points <= 0) {
+            file.delete();
+            return;
+        }
+        ++trackSaveCount;
+        lastTrackName = file.getName();
+        logEvent(getString(R.string.event_saved_track, file.getName(), points));
+        if(dropped > 0) logEvent(getString(R.string.event_track_dropped, dropped));
+    }
+
     // ------------------------------------------------------------------ capture loop
 
     final AudioMemory.Consumer filler = new AudioMemory.Consumer() {
@@ -564,14 +1006,24 @@ public class SaidItService extends Service {
                 // re-posted the reader: the service stayed "recording" and never saved again.
                 // Keep the loop alive so a transient failure can recover.
                 readErrorCount++;
+                consecutiveReadErrors++;
                 recordError(getString(R.string.error_audio_read, read));
                 Log.e(TAG, "AUDIO RECORD READ ERROR " + read + ", retrying");
-                audioHandler.postDelayed(audioReader, 1000);
+                // A dead object is gone for good, and errors that keep coming are not transient
+                // either. Both want a new AudioRecord, not another read of the broken one.
+                if (read == AudioRecord.ERROR_DEAD_OBJECT
+                        || consecutiveReadErrors >= READ_ERRORS_BEFORE_RESTART) {
+                    consecutiveReadErrors = 0;
+                    restartAudioRecord("read error " + read);
+                } else {
+                    audioHandler.postDelayed(audioReader, 1000);
+                }
                 return 0;
             }
             if (read > 0) {
                 lastReadElapsed = SystemClock.elapsedRealtime();
                 bytesCaptured += read;
+                consecutiveReadErrors = 0;
             }
             if (read == count) {
                 // We've filled the buffer, so let's read again.
@@ -753,6 +1205,14 @@ public class SaidItService extends Service {
             logEvent(getString(R.string.event_low_power_off, previous / 1000f));
             applySampleRate(previous);
         }
+        // The watchdog and the GPS radio both pace themselves off low power mode. Restarting
+        // capture already re-registered location at the new interval, but applySampleRate does
+        // nothing when the rate happens to match already, and then this is the only thing that does.
+        armCaptureWatchdog();
+        if(gpsRequested && gpsIntervalMillis != wantedGpsIntervalMillis()) {
+            stopLocationUpdates();
+            startLocationUpdates();
+        }
         updateNotification();
     }
 
@@ -785,6 +1245,27 @@ public class SaidItService extends Service {
         /** Milliseconds since the last read that returned audio, or -1 if there was none. */
         public long sinceLastReadMillis;
 
+        /** True while another app or a call holds the input and Android is feeding us silence. */
+        public boolean micSilenced;
+        /** True while the microphone cannot be opened at all and reopening is being retried. */
+        public boolean micBlocked;
+        public int micTakeoverCount;
+        public boolean inCall;
+
+        public boolean gpsEnabled;
+        public boolean gpsPermission;
+        /** True when the GPS provider is switched on in the system settings. */
+        public boolean gpsProviderEnabled;
+        /** Fixes buffered and not written to a track file yet. */
+        public int trackPoints;
+        public int fixCount;
+        /** Wall clock time of the last fix, or 0 when there has been none. */
+        public long lastFixMillis;
+        /** Accuracy of the last fix in metres, or -1 when it carried none. */
+        public float lastFixAccuracy;
+        public int trackSaveCount;
+        public String lastTrackName;
+
         public String lastError;
         public long lastErrorMillis;
 
@@ -796,6 +1277,7 @@ public class SaidItService extends Service {
         /** Nothing is wrong and audio is being kept. */
         public boolean isHealthy() {
             if(!listeningEnabled) return true; // stopped on purpose
+            if(micSilenced || micBlocked) return false; // the input belongs to somebody else
             return capturing && lastError == null && !intervalExceedsMemory;
         }
     }
@@ -819,18 +1301,35 @@ public class SaidItService extends Service {
         result.sampleRate = SAMPLE_RATE;
         result.bytesCaptured = bytesCaptured;
         result.readErrorCount = readErrorCount;
+        result.micSilenced = micSilenced;
+        result.micBlocked = micBlocked;
+        result.micTakeoverCount = micTakeoverCount;
+        result.inCall = inCall();
+        result.gpsEnabled = gpsEnabled;
+        result.gpsPermission = gpsEnabled && hasLocationPermission();
+        result.gpsProviderEnabled = gpsEnabled && isGpsProviderEnabled();
+        result.fixCount = fixCount;
+        result.lastFixMillis = lastFixMillis;
+        result.lastFixAccuracy = lastFixAccuracy;
+        result.trackSaveCount = trackSaveCount;
+        result.lastTrackName = lastTrackName;
         result.lastError = lastError;
         result.lastErrorMillis = lastErrorMillis;
         // Deliberately the cached value: resolving probes the filesystem and this runs on the
         // main thread once a second.
         final File dir = storageDir;
         result.storagePath = (dir == null) ? null : dir.getAbsolutePath();
-        result.storagePublic = dir != null && Storage.isPublic(this, dir);
+        result.storagePublic = dir != null && Storage.isPublic(dir);
 
         final long lastRead = lastReadElapsed;
         if(state == STATE_READY) {
             result.capturing = false;
             result.sinceLastReadMillis = -1;
+        } else if(micSilenced || micBlocked) {
+            // Reads may well be succeeding, but what they return is silence, so no.
+            result.capturing = false;
+            result.sinceLastReadMillis = (lastRead == 0)
+                    ? -1 : SystemClock.elapsedRealtime() - lastRead;
         } else if(lastRead == 0) {
             // Nothing has arrived yet. Give AudioRecord its buffer's worth of time before
             // calling it dead, but do call it dead after that: a microphone that never delivers
@@ -847,6 +1346,7 @@ public class SaidItService extends Service {
             @Override
             public void run() {
                 flushAudioRecord();
+                result.trackPoints = track.size();
                 final AudioMemory.Stats stats = audioMemory.getStats(FILL_RATE);
                 final float bytesToSeconds = getBytesToSeconds();
                 result.memorized = (stats.overwriting ? stats.total : stats.filled + stats.estimation) * bytesToSeconds;
@@ -903,7 +1403,7 @@ public class SaidItService extends Service {
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         try {
-            startForeground(FOREGROUND_NOTIFICATION_ID, buildNotification(), ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE);
+            startForeground(FOREGROUND_NOTIFICATION_ID, buildNotification(), foregroundServiceTypes());
         } catch (Exception e) {
             // Android 14 refuses a microphone foreground service started while the app is not in
             // use, which is exactly what happens on a start from the background, such as at boot.
@@ -911,6 +1411,30 @@ public class SaidItService extends Service {
             recordError(getString(R.string.error_cant_go_foreground));
         }
         return START_STICKY;
+    }
+
+    /**
+     * Android 14 checks a foreground service against the permissions its declared types need, and
+     * throws if one is missing. So location is only claimed while it is actually being logged and
+     * the permission is actually held.
+     */
+    private int foregroundServiceTypes() {
+        int types = ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE;
+        if(gpsEnabled && hasLocationPermission()) {
+            types |= ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION;
+        }
+        return types;
+    }
+
+    /** Re-declares the service's types, which is how location access is gained or given up. */
+    private void refreshForegroundType() {
+        if(state != STATE_LISTENING) return;
+        try {
+            startForeground(FOREGROUND_NOTIFICATION_ID, buildNotification(), foregroundServiceTypes());
+        } catch (Exception e) {
+            Log.e(TAG, "Can't change the foreground service type", e);
+            recordError(getString(R.string.error_cant_go_foreground));
+        }
     }
 
     private void createNotificationChannel() {
@@ -928,12 +1452,20 @@ public class SaidItService extends Service {
         Intent intent = new Intent(this, SaidItActivity.class);
         PendingIntent pendingIntent = PendingIntent.getActivity(this, 0, intent, PendingIntent.FLAG_IMMUTABLE);
 
-        final int title = (state == STATE_LISTENING)
-                ? R.string.notification_listening : R.string.notification_idle;
+        final int title;
+        if(state != STATE_LISTENING) {
+            title = R.string.notification_idle;
+        } else if(micSilenced || micBlocked) {
+            title = R.string.notification_mic_busy;
+        } else {
+            title = R.string.notification_listening;
+        }
 
         String detail;
         if(state == STATE_READY) {
             detail = getString(R.string.notification_idle_detail);
+        } else if(micSilenced || micBlocked) {
+            detail = getString(R.string.notification_mic_busy_detail);
         } else if(isAutoSaveEnabled()) {
             detail = getResources().getQuantityString(R.plurals.notification_auto_save_on,
                     getAutoSaveIntervalMinutes(), getAutoSaveIntervalMinutes());
@@ -942,6 +1474,9 @@ public class SaidItService extends Service {
         }
         if(isLowPowerEnabled()) {
             detail = detail + " " + getString(R.string.notification_low_power_suffix);
+        }
+        if(gpsEnabled) {
+            detail = detail + " " + getString(R.string.notification_gps_suffix);
         }
 
         return new NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
@@ -955,6 +1490,13 @@ public class SaidItService extends Service {
                 .setOngoing(true)
                 .build();
     }
+
+    private final Runnable notificationUpdater = new Runnable() {
+        @Override
+        public void run() {
+            updateNotification();
+        }
+    };
 
     /** Refreshes the ongoing notification so it always shows the real state. */
     private void updateNotification() {

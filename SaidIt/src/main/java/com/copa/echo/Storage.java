@@ -11,13 +11,14 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Picks the directory recordings are written to.
+ * Picks the directory traces are written to.
  *
- * The public Music/Echo directory is only reachable with MANAGE_EXTERNAL_STORAGE, and holding
- * that permission is not the same as being able to write: on GrapheneOS, Storage Scopes let the
- * user grant the app a narrow set of paths while {@link Environment#isExternalStorageManager()}
- * still reports true, so creating a file fails even though every check says it should work.
- * Rather than failing silently, probe each candidate and fall back to app storage.
+ * The shared Echo directory at the root of external storage is only reachable with
+ * MANAGE_EXTERNAL_STORAGE, and holding that permission is not the same as being able to write:
+ * on GrapheneOS, Storage Scopes let the user grant the app a narrow set of paths while
+ * {@link Environment#isExternalStorageManager()} still reports true, so creating a file fails
+ * even though every check says it should work. Rather than failing silently, probe each
+ * candidate and fall back to app storage.
  */
 public class Storage {
 
@@ -25,15 +26,36 @@ public class Storage {
     private static final String DIR_NAME = "Echo";
     private static final String PROBE_NAME = ".echo_write_probe";
 
-    /** Every directory recordings may live in, best first. */
+    /** The shared directory, which is where traces belong when it can be written to. */
+    private static File sharedDir() {
+        return new File(Environment.getExternalStorageDirectory(), DIR_NAME);
+    }
+
+    /** Every directory traces may be written to, best first. */
     public static List<File> candidates(Context context) {
         final List<File> dirs = new ArrayList<File>();
         if (Environment.MEDIA_MOUNTED.equals(Environment.getExternalStorageState())) {
-            dirs.add(new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC), DIR_NAME));
-            final File external = context.getExternalFilesDir(Environment.DIRECTORY_MUSIC);
+            dirs.add(sharedDir());
+            final File external = context.getExternalFilesDir(null);
             if (external != null) dirs.add(new File(external, DIR_NAME));
         }
         dirs.add(new File(context.getFilesDir(), DIR_NAME));
+        return dirs;
+    }
+
+    /**
+     * Every directory worth reading traces out of: the ones written to now, plus the ones older
+     * versions used. Files the user recorded do not stop being theirs because the app moved.
+     */
+    public static List<File> readable(Context context) {
+        final List<File> dirs = candidates(context);
+        if (Environment.MEDIA_MOUNTED.equals(Environment.getExternalStorageState())) {
+            // Up to 2.1 everything went under Music/Echo.
+            dirs.add(new File(Environment.getExternalStoragePublicDirectory(
+                    Environment.DIRECTORY_MUSIC), DIR_NAME));
+            final File music = context.getExternalFilesDir(Environment.DIRECTORY_MUSIC);
+            if (music != null) dirs.add(new File(music, DIR_NAME));
+        }
         return dirs;
     }
 
@@ -47,10 +69,9 @@ public class Storage {
         return dirs.get(dirs.size() - 1);
     }
 
-    /** True when the public Music directory is the one being used. */
-    public static boolean isPublic(Context context, File dir) {
-        return dir.getAbsolutePath().startsWith(
-                Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC).getAbsolutePath());
+    /** True when the shared Echo directory is the one being used, rather than app storage. */
+    public static boolean isPublic(File dir) {
+        return sharedDir().equals(dir);
     }
 
     /**

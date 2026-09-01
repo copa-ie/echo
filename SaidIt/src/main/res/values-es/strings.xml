@@ -62,30 +62,33 @@
 
     <!-- Pantalla de grabaciones -->
 
-    <string name="recordings_title">Grabaciones</string>
+    <string name="traces_title">Trazas</string>
     <string name="settings_title">Ajustes</string>
-    <string name="recordings_loading">Leyendo el almacenamiento…</string>
-    <string name="recordings_ranges_title">Tiempo cubierto ese día</string>
-    <string name="recordings_previous_day">Día anterior</string>
-    <string name="recordings_next_day">Día siguiente</string>
-    <string name="recordings_day_summary">%1$s · %2$s de audio · %3$s</string>
-    <string name="recordings_day_empty">No se guardó ninguna grabación este día.</string>
-    <string name="recordings_jumped_to_day">Ese día no hay grabaciones. Mostrando el más cercano: %1$s</string>
-    <string name="recordings_empty">Todavía no se ha guardado ninguna grabación. Los archivos guardados aparecerán aquí.</string>
-    <string name="recordings_summary">%1$s · %2$s de audio · %3$s\n%4$s</string>
-    <string name="recordings_summary_empty">No hay nada guardado en\n%1$s</string>
-    <string name="recordings_range_line">%1$s  %2$s → %3$s\n%4$s · %5$s</string>
-    <string name="recordings_item_range">%1$s%2$s  %3$s → %4$s</string>
-    <string name="recordings_item_detail">%1$s · %2$s · %3$d kHz · %4$s</string>
-    <plurals name="recordings_file_count">
-        <item quantity="one">%d archivo</item>
-        <item quantity="other">%d archivos</item>
+    <string name="traces_loading">Leyendo el almacenamiento…</string>
+    <string name="traces_ranges_title">Tiempo cubierto ese día</string>
+    <string name="traces_previous_day">Día anterior</string>
+    <string name="traces_next_day">Día siguiente</string>
+    <string name="traces_day_summary">%1$s · %2$s de audio · %3$s</string>
+    <string name="traces_day_empty">No se guardó nada este día.</string>
+    <string name="traces_jumped_to_day">Ese día no se guardó nada. Mostrando el más cercano: %1$s</string>
+    <string name="traces_empty">Todavía no se ha guardado nada. Los archivos guardados aparecerán aquí.</string>
+    <string name="traces_summary">%1$s · %2$s de audio · %3$s\n%4$s</string>
+    <string name="traces_summary_empty">No hay nada guardado en\n%1$s</string>
+    <string name="traces_range_line">%1$s  %2$s → %3$s\n%4$s · %5$s</string>
+    <string name="traces_item_range">%1$s%2$s  %3$s → %4$s</string>
+    <string name="traces_item_detail">%1$s · %2$s · %3$d kHz · %4$s</string>
+    <string name="traces_item_detail_gps">%1$s · %2$s · GPS · %3$s</string>
+    <string name="traces_count_breakdown">%1$s (%2$d de audio, %3$d GPS)</string>
+    <plurals name="traces_file_count">
+        <item quantity="one">%d traza</item>
+        <item quantity="other">%d trazas</item>
     </plurals>
-    <string name="recordings_cant_open">Ninguna app instalada puede reproducir este archivo.</string>
-    <string name="recordings_cant_delete">No se pudo borrar el archivo.</string>
-    <string name="recordings_delete_title">Borrar grabación</string>
-    <string name="recordings_delete_message">¿Borrar %1$s? Esto no se puede deshacer.</string>
-    <string name="recordings_delete_confirm">Borrar</string>
+    <string name="traces_cant_open">Ninguna app instalada puede reproducir este archivo.</string>
+    <string name="traces_cant_open_track">Ninguna app instalada puede abrir una traza GPX.</string>
+    <string name="traces_cant_delete">No se pudo borrar el archivo.</string>
+    <string name="traces_delete_title">Borrar archivo</string>
+    <string name="traces_delete_message">¿Borrar %1$s? Esto no se puede deshacer.</string>
+    <string name="traces_delete_confirm">Borrar</string>
 
     <!-- Ajustes -->
 
@@ -106,7 +109,7 @@
         <item quantity="one">%d min</item>
         <item quantity="other">%d min</item>
     </plurals>
-    <string name="storage_location_title">Las grabaciones se guardan en</string>
+    <string name="storage_location_title">Las trazas se guardan en</string>
     <string name="settings_return">Volver</string>
 
     <!-- Diálogos -->
@@ -130,7 +133,7 @@
     <string name="permission_required">Permiso necesario</string>
     <string name="permission_required_message">Echo necesita permiso para grabar y guardar audio. Actívalo en los ajustes.</string>
     <string name="storage_permission_title">Acceso a todos los archivos</string>
-    <string name="storage_permission_message">Sin acceso a todos los archivos Echo sigue grabando, pero las grabaciones se guardan en el almacenamiento propio de la app y desaparecen si la desinstalas. Concede el acceso para guardarlas en Música/Echo.</string>
+    <string name="storage_permission_message">Sin acceso a todos los archivos Echo sigue grabando, pero las trazas se guardan en el almacenamiento propio de la app y desaparecen si la desinstalas. Concede el acceso para guardarlas en una carpeta Echo compartida.</string>
     <string name="continue_anyway">Continuar sin él</string>
 
     <!-- Avisos de salud en la pantalla principal -->
@@ -154,6 +157,40 @@
     <string name="low_power_hint">Graba a 8 kHz: peor calidad, un sexto de los datos y muchos menos despertares del CPU.</string>
     <string name="low_power_description">Para cuando la batería importa más que la fidelidad. La captura baja a 8 kHz, suficiente para entender el habla, así que el búfer del micrófono dura seis veces más entre despertares, los archivos ocupan un sexto y esta pantalla se refresca menos a menudo. Al desactivarlo se recupera la calidad anterior. Lo que haya en memoria se guarda antes del cambio, porque la memoria de audio no puede sobrevivir a un cambio de formato.</string>
     <string name="notification_low_power_suffix">· bajo consumo</string>
+
+    <!-- Registro GPS -->
+
+    <string name="gps_title">Registro GPS</string>
+    <string name="gps_on">Registro GPS: ACTIVO</string>
+    <string name="gps_off">Registro GPS: apagado</string>
+    <string name="gps_hint">Registra dónde estuviste, guardado como una traza .gpx junto a cada grabación.</string>
+    <string name="gps_description">Mientras Echo escucha, se toma una posición cada pocos segundos y se escribe con los mismos guardados que el audio, en un archivo con el mismo nombre y extensión .gpx. Cualquier app de mapas o GPS lo abre. Las posiciones se detienen con la grabación, y los huecos de señal se conservan como huecos en lugar de dibujarse como líneas rectas. En modo de bajo consumo se toma una posición cada 30 segundos en vez de cada 5.</string>
+    <string name="gps_permission_needed">Echo necesita permiso de ubicación para registrar una traza GPS.</string>
+    <string name="gps_provider_off">El GPS está apagado en este dispositivo, así que no llegará ninguna posición. Activa la ubicación en los ajustes del sistema.</string>
+    <string name="notification_gps_suffix">\u00b7 GPS</string>
+
+    <!-- Compartir el micrófono -->
+
+    <string name="notification_mic_busy">Echo está esperando al micrófono</string>
+    <string name="notification_mic_busy_detail">Otra app lo está usando; la grabación se reanuda sola</string>
+    <string name="warning_mic_silenced">Otra app, o una llamada, está usando el micrófono, así que Android le está dando silencio a Echo. La grabación se reanuda sola en cuanto la entrada quede libre.</string>
+    <string name="warning_mic_blocked">No se pudo abrir el micrófono, lo más probable es que lo tenga otra app. Echo sigue intentándolo y vuelve a grabar en cuanto quede libre.</string>
+
+    <!-- Diagnóstico: micrófono y GPS -->
+
+    <string name="diagnostics_mic_shared">Micrófono tomado por otra app</string>
+    <string name="diagnostics_mic_takeovers">Veces que se llevaron el micrófono</string>
+    <string name="diagnostics_in_call">En una llamada</string>
+    <string name="diagnostics_mic_shared_note">Android da la entrada del micrófono a una app cada vez y a las demás les entrega silencio. Echo lo detecta y retoma la grabación por sí solo.</string>
+    <string name="diagnostics_gps">Registro GPS</string>
+    <string name="diagnostics_gps_permission">Permiso de ubicación</string>
+    <string name="diagnostics_gps_provider">GPS activado</string>
+    <string name="diagnostics_gps_fixes">Posiciones en esta sesión</string>
+    <string name="diagnostics_gps_buffered">Posiciones pendientes de guardar</string>
+    <string name="diagnostics_gps_last_fix">Última posición</string>
+    <string name="diagnostics_gps_accuracy">\u00b1%1$.0f m</string>
+    <string name="diagnostics_gps_tracks">Trazas guardadas en esta sesión</string>
+    <string name="diagnostics_gps_no_fix_note">El registro de ubicación está activo pero no ha llegado ninguna posición. El GPS necesita ver el cielo; bajo techo a menudo no hay nada que recibir.</string>
 
     <!-- Diagnóstico -->
 
@@ -213,6 +250,18 @@
     <string name="event_storage_fallback">Usando el almacenamiento de la app: %1$s</string>
     <string name="event_low_power_on">Modo de bajo consumo activado, bajando a 8 kHz</string>
     <string name="event_low_power_off">Modo de bajo consumo desactivado, volviendo a %1$.1f kHz</string>
+    <string name="event_mic_taken">Otra app se llevó el micrófono; Echo está recibiendo silencio</string>
+    <string name="event_mic_returned">El micrófono vuelve a estar libre, reiniciando la captura</string>
+    <string name="event_mic_regained">El micrófono se abrió de nuevo</string>
+    <string name="event_capture_stalled">Sin audio durante %1$d s, reiniciando la captura</string>
+    <string name="event_gps_on">Registro GPS activado</string>
+    <string name="event_gps_off">Registro GPS desactivado</string>
+    <string name="event_gps_started">Pidiendo una posición cada %1$.0f s</string>
+    <string name="event_gps_stopped">Registro GPS detenido</string>
+    <string name="event_gps_provider_on">Se activó el GPS</string>
+    <string name="event_gps_provider_off">Se desactivó el GPS</string>
+    <string name="event_saved_track">Guardado %1$s (%2$d posiciones)</string>
+    <string name="event_track_dropped">El buffer de la traza estaba lleno, se descartaron %1$d posiciones antiguas</string>
 
     <!-- Errores -->
 
@@ -220,6 +269,9 @@
     <string name="error_audio_read">Error de lectura del micrófono (%1$d), reintentando</string>
     <string name="error_capture_failed">La captura de audio falló al llenar la memoria.</string>
     <string name="error_cant_write_dir">No se puede escribir en %1$s</string>
+    <string name="error_no_location_permission">Falta el permiso de ubicación, así que no se está registrando ninguna traza GPS.</string>
+    <string name="error_no_gps_provider">Este dispositivo no tiene proveedor de GPS, así que no se puede registrar ninguna traza.</string>
+    <string name="error_cant_write_track">No se puede escribir la traza GPS en %1$s</string>
     <string name="error_cant_go_foreground">Android no ha permitido que Echo se ejecute en primer plano. Hay que arrancarlo desde la app, no desde segundo plano.</string>
 
 </resources>

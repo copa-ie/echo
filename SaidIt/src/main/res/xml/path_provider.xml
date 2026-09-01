@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <paths xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- Public Music/Echo, used when it is writable. -->
+    <!-- The shared Echo directory, used when it is writable. -->
     <external-path
         name="external_files"
         path="." />

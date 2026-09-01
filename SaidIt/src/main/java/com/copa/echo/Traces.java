@@ -12,33 +12,47 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
+import java.util.TimeZone;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Reads back the recordings sitting on disk so the app can show what has actually been kept,
- * and which stretches of time they cover.
+ * Reads back the traces sitting on disk so the app can show what has actually been kept, and
+ * which stretches of time they cover.
  *
- * Every file the service writes is named after the wall clock time of its *first* sample
- * (yyyyMMdd_HHmmss, plus a _2, _3... suffix when that second already had a file), so the
- * covered range of a file is [name, name + length of its audio].
+ * Echo writes two kinds of trace, audio (.wav) and location (.gpx), and every one of them is its
+ * own file: they are listed, opened and deleted independently, even when a recording and a track
+ * were written by the same save and so share a name.
+ *
+ * Every file is named after the wall clock time of its *first* sample or fix (yyyyMMdd_HHmmss,
+ * plus a _2, _3... suffix when that second already had a file), so the covered range of a file
+ * is [name, name + its length].
  */
-public class Recordings {
+public class Traces {
 
-    private static final String TAG = Recordings.class.getSimpleName();
+    private static final String TAG = Traces.class.getSimpleName();
     private static final int WAV_HEADER_SIZE = 44;
 
+    /** Enough of the end of a GPX file to hold its last timestamp, whatever trails it. */
+    private static final int GPX_TAIL_SIZE = 4096;
+
     private static final Pattern NAME_PATTERN = Pattern.compile("^(\\d{8}_\\d{6})(?:_\\d+)?$");
+    private static final Pattern GPX_TIME_PATTERN = Pattern.compile("<time>([^<]+)</time>");
 
     /** Consecutive files closer than this are reported as a single uninterrupted range. */
     public static final long DEFAULT_MAX_GAP_MILLIS = 5000;
 
+    /** What a trace is a trace of. */
+    public enum Kind { AUDIO, LOCATION }
+
     public static class Entry {
         public File file;
+        public Kind kind;
         public long startMillis;
         public long endMillis;
         public float durationSeconds;
         public long sizeBytes;
+        /** Audio only, in Hz. */
         public int sampleRate;
         /** True when the start time comes from the file name, false when guessed from its mtime. */
         public boolean exactStart;
@@ -56,7 +70,7 @@ public class Recordings {
         }
     }
 
-    /** Recordings found across every given directory, oldest first. */
+    /** Traces found across every given directory, oldest first. */
     public static List<Entry> scanAll(List<File> dirs) {
         final List<Entry> entries = new ArrayList<Entry>();
         for (File dir : dirs) {
@@ -66,7 +80,7 @@ public class Recordings {
         return entries;
     }
 
-    /** Recordings found on disk, oldest first. */
+    /** Traces found on disk, oldest first. */
     public static List<Entry> scan(File dir) {
         final List<Entry> entries = new ArrayList<Entry>();
         collect(dir, entries);
@@ -80,8 +94,15 @@ public class Recordings {
 
         for (File file : files) {
             if (!file.isFile()) continue;
-            if (!file.getName().toLowerCase(Locale.US).endsWith(".wav")) continue;
-            final Entry entry = readEntry(file);
+            final String name = file.getName().toLowerCase(Locale.US);
+            final Entry entry;
+            if (name.endsWith(".wav")) {
+                entry = readAudioEntry(file);
+            } else if (name.endsWith(".gpx")) {
+                entry = readLocationEntry(file);
+            } else {
+                continue;
+            }
             if (entry != null) entries.add(entry);
         }
     }
@@ -90,14 +111,18 @@ public class Recordings {
         Collections.sort(entries, new Comparator<Entry>() {
             @Override
             public int compare(Entry a, Entry b) {
-                return Long.compare(a.startMillis, b.startMillis);
+                final int byTime = Long.compare(a.startMillis, b.startMillis);
+                // Two traces of the same moment are a recording and its track, and the recording
+                // is the one to read first.
+                return (byTime != 0) ? byTime : a.kind.compareTo(b.kind);
             }
         });
     }
 
-    private static Entry readEntry(File file) {
+    private static Entry readAudioEntry(File file) {
         final Entry entry = new Entry();
         entry.file = file;
+        entry.kind = Kind.AUDIO;
         entry.sizeBytes = file.length();
 
         int byteRate = 0;
@@ -125,16 +150,91 @@ public class Recordings {
         if (dataBytes <= 0 || dataBytes > audioBytes) dataBytes = audioBytes;
         entry.durationSeconds = dataBytes / (float) byteRate;
 
-        final Long namedStart = parseStartFromName(file.getName());
+        finishEntry(entry);
+        return entry;
+    }
+
+    /**
+     * A track's length is the time between its first and last fix. Both live in {@code <time>}
+     * elements, the first within the opening metadata and the last just before the end, so only
+     * the two ends of the file are read: a day of tracks is hundreds of files, and reading every
+     * fix of every one of them to draw a list is work nobody asked for.
+     */
+    private static Entry readLocationEntry(File file) {
+        final Entry entry = new Entry();
+        entry.file = file;
+        entry.kind = Kind.LOCATION;
+        entry.sizeBytes = file.length();
+
+        long first = 0;
+        long last = 0;
+        try {
+            final RandomAccessFile raf = new RandomAccessFile(file, "r");
+            try {
+                first = firstTimeIn(read(raf, 0, (int) Math.min(GPX_TAIL_SIZE, raf.length())));
+                final long tailAt = Math.max(0, raf.length() - GPX_TAIL_SIZE);
+                last = lastTimeIn(read(raf, tailAt, (int) Math.min(GPX_TAIL_SIZE, raf.length() - tailAt)));
+            } finally {
+                raf.close();
+            }
+        } catch (IOException e) {
+            Log.w(TAG, "Can't read the track " + file.getName() + ": " + e.getMessage());
+            return null;
+        }
+
+        // A file with neither a timestamp inside nor one in its name cannot be placed in time at
+        // all, and this screen is nothing but a timeline.
+        if (first == 0 && last == 0 && parseStartFromName(file.getName()) == null) return null;
+
+        if (first > 0 && last >= first) entry.durationSeconds = (last - first) / 1000f;
+        finishEntry(entry);
+        return entry;
+    }
+
+    /** Fills in the start and end every kind of trace shares, given its length. */
+    private static void finishEntry(Entry entry) {
+        final Long namedStart = parseStartFromName(entry.file.getName());
         if (namedStart != null) {
             entry.startMillis = namedStart;
             entry.exactStart = true;
         } else {
-            entry.startMillis = file.lastModified() - (long) (entry.durationSeconds * 1000);
+            entry.startMillis = entry.file.lastModified() - (long) (entry.durationSeconds * 1000);
             entry.exactStart = false;
         }
         entry.endMillis = entry.startMillis + (long) (entry.durationSeconds * 1000);
-        return entry;
+    }
+
+    private static String read(RandomAccessFile raf, long at, int count) throws IOException {
+        if (count <= 0) return "";
+        final byte[] bytes = new byte[count];
+        raf.seek(at);
+        raf.readFully(bytes);
+        return new String(bytes, "UTF-8");
+    }
+
+    private static long firstTimeIn(String text) {
+        final Matcher matcher = GPX_TIME_PATTERN.matcher(text);
+        return matcher.find() ? parseGpxTime(matcher.group(1)) : 0;
+    }
+
+    private static long lastTimeIn(String text) {
+        final Matcher matcher = GPX_TIME_PATTERN.matcher(text);
+        long last = 0;
+        while (matcher.find()) {
+            final long time = parseGpxTime(matcher.group(1));
+            if (time > 0) last = time;
+        }
+        return last;
+    }
+
+    private static long parseGpxTime(String text) {
+        final SimpleDateFormat format = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US);
+        format.setTimeZone(TimeZone.getTimeZone("UTC"));
+        try {
+            return format.parse(text).getTime();
+        } catch (ParseException e) {
+            return 0;
+        }
     }
 
     static Long parseStartFromName(String fileName) {
@@ -176,10 +276,24 @@ public class Recordings {
         return total;
     }
 
+    /**
+     * Audio only: a recording and the track written beside it cover the same seconds, so adding
+     * both up would report twice the time that was actually recorded.
+     */
     public static float totalDurationSeconds(List<Entry> entries) {
         float total = 0;
-        for (Entry entry : entries) total += entry.durationSeconds;
+        for (Entry entry : entries) {
+            if (entry.kind == Kind.AUDIO) total += entry.durationSeconds;
+        }
         return total;
+    }
+
+    public static int countOf(List<Entry> entries, Kind kind) {
+        int count = 0;
+        for (Entry entry : entries) {
+            if (entry.kind == kind) ++count;
+        }
+        return count;
     }
 
     private static int intLE(byte[] bytes, int offset) {

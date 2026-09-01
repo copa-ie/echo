@@ -8,6 +8,13 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
 
+    <!-- GPS logging. Location is only ever read while the foreground service is running, which
+         is what lets Echo do without ACCESS_BACKGROUND_LOCATION. -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+    <uses-feature android:name="android.hardware.location.gps" android:required="false" />
+
     <application
         android:allowBackup="false"
         android:icon="@drawable/ic_launcher"
@@ -26,7 +33,7 @@
 
         <service
             android:name=".SaidItService"
-            android:foregroundServiceType="microphone"
+            android:foregroundServiceType="microphone|location"
             android:enabled="true"
             android:exported="false">
         </service>
@@ -40,7 +47,7 @@
         </activity>
 
         <activity
-            android:name=".RecordingsActivity"
+            android:name=".TracesActivity"
             android:parentActivityName=".SaidItActivity" >
             <meta-data
                 android:name="android.support.PARENT_ACTIVITY"

@@ -42,21 +42,24 @@ import com.copa.echo.android.Views;
  * Shows what is actually on disk, one calendar day at a time. Months of continuous recording
  * add up to hundreds of files; scrolling through all of them flat is not navigation, so a day
  * picker at the top jumps straight to the day you actually want.
+ *
+ * Audio and location traces are listed side by side as the independent files they are, each
+ * opened and deleted on its own.
  */
-public class RecordingsActivity extends Activity {
+public class TracesActivity extends Activity {
 
-    private static final String TAG = RecordingsActivity.class.getSimpleName();
+    private static final String TAG = TracesActivity.class.getSimpleName();
 
-    /** Every recording on disk, oldest first, regardless of which day is on screen. */
-    private final List<Recordings.Entry> allEntries = new ArrayList<Recordings.Entry>();
-    /** Midnight (local time) of every day that has at least one recording, oldest first. */
+    /** Every trace on disk, oldest first, regardless of which day is on screen. */
+    private final List<Traces.Entry> allEntries = new ArrayList<Traces.Entry>();
+    /** Midnight (local time) of every day that has at least one trace, oldest first. */
     private final List<Long> availableDays = new ArrayList<Long>();
     /** Index into availableDays of the day on screen, or -1 when there is nothing to show. */
     private int currentDayIndex = -1;
 
-    /** Recordings of the day on screen, newest first: what the adapter actually draws. */
-    private final List<Recordings.Entry> entries = new ArrayList<Recordings.Entry>();
-    private final RecordingsAdapter adapter = new RecordingsAdapter();
+    /** Traces of the day on screen, newest first: what the adapter actually draws. */
+    private final List<Traces.Entry> entries = new ArrayList<Traces.Entry>();
+    private final TracesAdapter adapter = new TracesAdapter();
     private final Handler handler = new Handler();
 
     private Typeface bold;
@@ -83,7 +86,7 @@ public class RecordingsActivity extends Activity {
         regular = Typeface.createFromAsset(assets, "RobotoCondensed-Regular.ttf");
         timeFormat = new SimpleDateFormat("HH:mm:ss", Locale.getDefault());
 
-        final ViewGroup root = (ViewGroup) getLayoutInflater().inflate(R.layout.activity_recordings, null);
+        final ViewGroup root = (ViewGroup) getLayoutInflater().inflate(R.layout.activity_traces, null);
         applyTypefaces(root);
 
         // The screen draws behind the status bar, so leave room for it.
@@ -94,22 +97,22 @@ public class RecordingsActivity extends Activity {
                     root.getPaddingRight(), root.getPaddingBottom());
         }
 
-        list = (ListView) root.findViewById(R.id.recordings_list);
+        list = (ListView) root.findViewById(R.id.traces_list);
 
-        // Part of the scrolling list itself, see the comment in activity_recordings.xml.
+        // Part of the scrolling list itself, see the comment in activity_traces.xml.
         // Added before setAdapter: some ListView implementations require that order.
-        final View header = getLayoutInflater().inflate(R.layout.recordings_header, list, false);
+        final View header = getLayoutInflater().inflate(R.layout.traces_header, list, false);
         applyTypefaces((ViewGroup) header);
         list.addHeaderView(header, null, false);
 
-        summary = (TextView) header.findViewById(R.id.recordings_summary);
+        summary = (TextView) header.findViewById(R.id.traces_summary);
         dayPrev = (Button) header.findViewById(R.id.day_prev);
         dayNext = (Button) header.findViewById(R.id.day_next);
         dayLabel = (TextView) header.findViewById(R.id.day_label);
         daySummary = (TextView) header.findViewById(R.id.day_summary);
         rangesTitle = (TextView) header.findViewById(R.id.ranges_title);
         rangesContainer = (LinearLayout) header.findViewById(R.id.ranges_container);
-        empty = (TextView) header.findViewById(R.id.recordings_empty);
+        empty = (TextView) header.findViewById(R.id.traces_empty);
 
         dayPrev.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -145,7 +148,7 @@ public class RecordingsActivity extends Activity {
             @Override
             public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
                 final int index = position - list.getHeaderViewsCount();
-                if (index >= 0 && index < entries.size()) play(entries.get(index).file);
+                if (index >= 0 && index < entries.size()) open(entries.get(index));
             }
         });
 
@@ -158,7 +161,7 @@ public class RecordingsActivity extends Activity {
             }
         });
 
-        root.findViewById(R.id.recordings_return).setOnClickListener(new View.OnClickListener() {
+        root.findViewById(R.id.traces_return).setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
                 finish();
@@ -188,9 +191,9 @@ public class RecordingsActivity extends Activity {
 
     /** Reads the directories off the UI thread, since they can hold hundreds of files. */
     private void reload() {
-        // Recordings may sit in a directory the app used before storage access changed, so look
-        // in every candidate rather than only the one being written to now.
-        final List<File> dirs = Storage.candidates(this);
+        // Traces may sit in a directory an older version wrote to, so look in every readable
+        // one rather than only the one being written to now.
+        final List<File> dirs = Storage.readable(this);
         final File dir = Storage.resolve(this);
         // Keep showing the same day across a reload (e.g. after deleting a file), falling back
         // to the closest one if it no longer has anything in it.
@@ -199,7 +202,7 @@ public class RecordingsActivity extends Activity {
         new Thread(new Runnable() {
             @Override
             public void run() {
-                final List<Recordings.Entry> scanned = Recordings.scanAll(dirs);
+                final List<Traces.Entry> scanned = Traces.scanAll(dirs);
                 handler.post(new Runnable() {
                     @Override
                     public void run() {
@@ -210,23 +213,23 @@ public class RecordingsActivity extends Activity {
         }, "recordings-scan").start();
     }
 
-    private void show(File dir, List<Recordings.Entry> scanned, Long keepDay) {
+    private void show(File dir, List<Traces.Entry> scanned, Long keepDay) {
         allEntries.clear();
         allEntries.addAll(scanned);
 
         final TreeSet<Long> days = new TreeSet<Long>();
-        for (Recordings.Entry entry : scanned) days.add(dayStart(entry.startMillis));
+        for (Traces.Entry entry : scanned) days.add(dayStart(entry.startMillis));
         availableDays.clear();
         availableDays.addAll(days);
 
         final int count = scanned.size();
         if (count == 0) {
-            summary.setText(getString(R.string.recordings_summary_empty, dir.getAbsolutePath()));
+            summary.setText(getString(R.string.traces_summary_empty, dir.getAbsolutePath()));
         } else {
-            summary.setText(getString(R.string.recordings_summary,
-                    getResources().getQuantityString(R.plurals.recordings_file_count, count, count),
-                    RecordingsActivity.longDuration((long) (Recordings.totalDurationSeconds(scanned) * 1000)),
-                    StringFormat.shortFileSize(Recordings.totalSizeBytes(scanned)),
+            summary.setText(getString(R.string.traces_summary,
+                    countLabel(scanned),
+                    TracesActivity.longDuration((long) (Traces.totalDurationSeconds(scanned) * 1000)),
+                    StringFormat.shortFileSize(Traces.totalSizeBytes(scanned)),
                     dir.getAbsolutePath()));
         }
 
@@ -252,7 +255,7 @@ public class RecordingsActivity extends Activity {
             daySummary.setText("");
             dayPrev.setEnabled(false);
             dayNext.setEnabled(false);
-            empty.setText(R.string.recordings_empty);
+            empty.setText(R.string.traces_empty);
             empty.setVisibility(View.VISIBLE);
             rangesTitle.setVisibility(View.GONE);
             rangesContainer.removeAllViews();
@@ -265,8 +268,8 @@ public class RecordingsActivity extends Activity {
         dayPrev.setEnabled(currentDayIndex > 0);
         dayNext.setEnabled(currentDayIndex < availableDays.size() - 1);
 
-        final List<Recordings.Entry> dayEntries = new ArrayList<Recordings.Entry>();
-        for (Recordings.Entry entry : allEntries) {
+        final List<Traces.Entry> dayEntries = new ArrayList<Traces.Entry>();
+        for (Traces.Entry entry : allEntries) {
             if (dayStart(entry.startMillis) == dayStart) dayEntries.add(entry);
         }
         // Newest first, which is what you want to look at when you open this screen.
@@ -275,7 +278,7 @@ public class RecordingsActivity extends Activity {
 
         if (dayEntries.isEmpty()) {
             daySummary.setText("");
-            empty.setText(R.string.recordings_day_empty);
+            empty.setText(R.string.traces_day_empty);
             empty.setVisibility(View.VISIBLE);
             rangesTitle.setVisibility(View.GONE);
             rangesContainer.removeAllViews();
@@ -283,31 +286,41 @@ public class RecordingsActivity extends Activity {
         }
 
         empty.setVisibility(View.GONE);
-        final int count = dayEntries.size();
-        daySummary.setText(getString(R.string.recordings_day_summary,
-                getResources().getQuantityString(R.plurals.recordings_file_count, count, count),
-                longDuration((long) (Recordings.totalDurationSeconds(dayEntries) * 1000)),
-                StringFormat.shortFileSize(Recordings.totalSizeBytes(dayEntries))));
+        daySummary.setText(getString(R.string.traces_day_summary,
+                countLabel(dayEntries),
+                longDuration((long) (Traces.totalDurationSeconds(dayEntries) * 1000)),
+                StringFormat.shortFileSize(Traces.totalSizeBytes(dayEntries))));
 
-        final List<Recordings.Range> ranges = Recordings.ranges(dayEntries, Recordings.DEFAULT_MAX_GAP_MILLIS);
+        final List<Traces.Range> ranges = Traces.ranges(dayEntries, Traces.DEFAULT_MAX_GAP_MILLIS);
         rangesTitle.setVisibility(View.VISIBLE);
         rangesContainer.removeAllViews();
         // Newest range first, same order as the list below.
         for (int i = ranges.size() - 1; i >= 0; --i) {
-            final Recordings.Range range = ranges.get(i);
+            final Traces.Range range = ranges.get(i);
             final TextView view = new TextView(this);
             view.setTypeface(regular);
             view.setTextSize(16);
             view.setTextColor(getResources().getColor(R.color.gray_c));
-            view.setText(getString(R.string.recordings_range_line,
+            view.setText(getString(R.string.traces_range_line,
                     dayLabel(range.startMillis),
                     timeFormat.format(new Date(range.startMillis)),
                     timeFormat.format(new Date(range.endMillis)),
                     longDuration(range.durationMillis()),
-                    getResources().getQuantityString(R.plurals.recordings_file_count,
+                    getResources().getQuantityString(R.plurals.traces_file_count,
                             range.fileCount, range.fileCount)));
             rangesContainer.addView(view);
         }
+    }
+
+    /** "12 traces (6 audio, 6 GPS)", dropping the breakdown when there is only one kind. */
+    private String countLabel(List<Traces.Entry> entries) {
+        final int total = entries.size();
+        final String count = getResources().getQuantityString(
+                R.plurals.traces_file_count, total, total);
+        final int audio = Traces.countOf(entries, Traces.Kind.AUDIO);
+        final int location = total - audio;
+        if (audio == 0 || location == 0) return count;
+        return getString(R.string.traces_count_breakdown, count, audio, location);
     }
 
     private void openDatePicker() {
@@ -333,7 +346,7 @@ public class RecordingsActivity extends Activity {
         currentDayIndex = index;
         showDay();
         if (!exact) {
-            Toast.makeText(this, getString(R.string.recordings_jumped_to_day,
+            Toast.makeText(this, getString(R.string.traces_jumped_to_day,
                     dayLabelLong(availableDays.get(index))), Toast.LENGTH_SHORT).show();
         }
     }
@@ -383,28 +396,32 @@ public class RecordingsActivity extends Activity {
         return String.format(Locale.getDefault(), "%d:%02d", minutes, seconds);
     }
 
-    private void play(File file) {
+    private void open(Traces.Entry entry) {
+        final File file = entry.file;
         try {
             final Uri uri = FileProvider.getUriForFile(this, getPackageName() + ".provider", file);
             final Intent intent = new Intent(Intent.ACTION_VIEW);
-            intent.setDataAndType(uri, "audio/wav");
+            intent.setDataAndType(uri, entry.kind == Traces.Kind.AUDIO
+                    ? "audio/wav" : "application/gpx+xml");
             intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
             startActivity(intent);
         } catch (Exception e) {
             Log.w(TAG, "Can't open " + file.getName(), e);
-            Toast.makeText(this, R.string.recordings_cant_open, Toast.LENGTH_LONG).show();
+            Toast.makeText(this, entry.kind == Traces.Kind.AUDIO
+                    ? R.string.traces_cant_open : R.string.traces_cant_open_track,
+                    Toast.LENGTH_LONG).show();
         }
     }
 
     private void confirmDelete(final File file) {
         new AlertDialog.Builder(this)
-                .setTitle(R.string.recordings_delete_title)
-                .setMessage(getString(R.string.recordings_delete_message, file.getName()))
-                .setPositiveButton(R.string.recordings_delete_confirm, new DialogInterface.OnClickListener() {
+                .setTitle(R.string.traces_delete_title)
+                .setMessage(getString(R.string.traces_delete_message, file.getName()))
+                .setPositiveButton(R.string.traces_delete_confirm, new DialogInterface.OnClickListener() {
                     @Override
                     public void onClick(DialogInterface dialog, int which) {
                         if (!file.delete()) {
-                            Toast.makeText(RecordingsActivity.this, R.string.recordings_cant_delete, Toast.LENGTH_LONG).show();
+                            Toast.makeText(TracesActivity.this, R.string.traces_cant_delete, Toast.LENGTH_LONG).show();
                         }
                         reload();
                     }
@@ -413,7 +430,7 @@ public class RecordingsActivity extends Activity {
                 .show();
     }
 
-    private class RecordingsAdapter extends BaseAdapter {
+    private class TracesAdapter extends BaseAdapter {
 
         @Override
         public int getCount() {
@@ -434,23 +451,25 @@ public class RecordingsActivity extends Activity {
         public View getView(int position, View convertView, ViewGroup parent) {
             View view = convertView;
             if (view == null) {
-                view = LayoutInflater.from(RecordingsActivity.this).inflate(R.layout.item_recording, parent, false);
+                view = LayoutInflater.from(TracesActivity.this).inflate(R.layout.item_trace, parent, false);
                 applyTypefaces((ViewGroup) view);
             }
 
-            final Recordings.Entry entry = entries.get(position);
+            final Traces.Entry entry = entries.get(position);
             final String start = timeFormat.format(new Date(entry.startMillis));
             final String end = timeFormat.format(new Date(entry.endMillis));
             final String approx = entry.exactStart ? "" : "~";
 
-            ((TextView) view.findViewById(R.id.recording_range)).setText(
-                    getString(R.string.recordings_item_range, approx, dayLabel(entry.startMillis), start, end));
-            ((TextView) view.findViewById(R.id.recording_detail)).setText(
-                    getString(R.string.recordings_item_detail,
-                            longDuration((long) (entry.durationSeconds * 1000)),
-                            StringFormat.shortFileSize(entry.sizeBytes),
-                            entry.sampleRate / 1000,
-                            entry.file.getName()));
+            ((TextView) view.findViewById(R.id.trace_range)).setText(
+                    getString(R.string.traces_item_range, approx, dayLabel(entry.startMillis), start, end));
+            final String duration = longDuration((long) (entry.durationSeconds * 1000));
+            final String size = StringFormat.shortFileSize(entry.sizeBytes);
+            ((TextView) view.findViewById(R.id.trace_detail)).setText(
+                    entry.kind == Traces.Kind.AUDIO
+                            ? getString(R.string.traces_item_detail, duration, size,
+                                    entry.sampleRate / 1000, entry.file.getName())
+                            : getString(R.string.traces_item_detail_gps, duration, size,
+                                    entry.file.getName()));
             return view;
         }
     }

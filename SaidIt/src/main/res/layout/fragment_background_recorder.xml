@@ -205,14 +205,14 @@
             android:orientation="horizontal">
 
             <Button
-                android:id="@+id/recordings_button"
+                android:id="@+id/traces_button"
                 style="@style/Button"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
                 android:layout_marginRight="8dp"
                 android:textSize="@dimen/small_text_size"
-                android:text="@string/recordings_title" />
+                android:text="@string/traces_title" />
 
             <Button
                 android:id="@+id/diagnostics_button"

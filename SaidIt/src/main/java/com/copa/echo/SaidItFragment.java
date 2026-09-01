@@ -201,10 +201,10 @@ public class SaidItFragment extends Fragment {
             }
         });
 
-        rootView.findViewById(R.id.recordings_button).setOnClickListener(new View.OnClickListener() {
+        rootView.findViewById(R.id.traces_button).setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                startActivity(new Intent(activity, RecordingsActivity.class));
+                startActivity(new Intent(activity, TracesActivity.class));
             }
         });
 
@@ -302,7 +302,13 @@ public class SaidItFragment extends Fragment {
     private void drawWarning(Resources resources, SaidItService.State state) {
         String message = null;
         if (state.listeningEnabled) {
-            if (!state.capturing) {
+            // Most specific first: "another app has the microphone" is the reason behind most of
+            // the ways capture stops, and saying so beats telling the user to restart it.
+            if (state.micSilenced) {
+                message = resources.getString(R.string.warning_mic_silenced);
+            } else if (state.micBlocked) {
+                message = resources.getString(R.string.warning_mic_blocked);
+            } else if (!state.capturing) {
                 message = resources.getString(R.string.warning_not_capturing);
             } else if (state.lastError != null
                     && System.currentTimeMillis() - state.lastErrorMillis < ERROR_FRESH_MILLIS) {

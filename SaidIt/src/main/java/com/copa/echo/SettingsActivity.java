@@ -1,10 +1,12 @@
 package com.copa.echo;
 
+import android.Manifest;
 import android.app.Activity;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.ServiceConnection;
+import android.content.pm.PackageManager;
 import android.content.res.Resources;
 import android.graphics.Rect;
 import android.graphics.Typeface;
@@ -21,6 +23,8 @@ import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
+import androidx.annotation.NonNull;
+
 import com.copa.echo.android.Fonts;
 import com.copa.echo.android.StringFormat;
 import com.copa.echo.android.TimeFormat;
@@ -33,6 +37,9 @@ public class SettingsActivity extends Activity {
     private final AutoSaveToggleClickListener autoSaveToggleClickListener = new AutoSaveToggleClickListener();
     private final AutoSaveIntervalClickListener autoSaveIntervalClickListener = new AutoSaveIntervalClickListener();
     private final LowPowerToggleClickListener lowPowerToggleClickListener = new LowPowerToggleClickListener();
+    private final GpsToggleClickListener gpsToggleClickListener = new GpsToggleClickListener();
+
+    private static final int LOCATION_PERMISSION_REQUEST_CODE = 5466;
 
     /** Selectable automatic save intervals, in minutes, paired with the buttons below. */
     private static final int[] INTERVAL_MINUTES = { 1, 5, 15, 30, 60 };
@@ -91,6 +98,7 @@ public class SettingsActivity extends Activity {
         highlightButtons();
         syncAutoSaveUI();
         syncLowPowerUI();
+        syncGpsUI();
     }
 
     private void syncAutoSaveUI() {
@@ -111,7 +119,7 @@ public class SettingsActivity extends Activity {
             button.setEnabled(enabled);
         }
 
-        // The cached directory, never getRecordingsDir(): resolving it creates and deletes a probe
+        // The cached directory, never getTracesDir(): resolving it creates and deletes a probe
         // file, and this runs on the main thread.
         final java.io.File dir = service.getResolvedDir();
         ((TextView) findViewById(R.id.storage_path)).setText(
@@ -130,6 +138,29 @@ public class SettingsActivity extends Activity {
             final View button = findViewById(buttonId);
             button.setEnabled(!lowPower);
             button.setAlpha(lowPower ? 0.4f : 1f);
+        }
+    }
+
+    private void syncGpsUI() {
+        if (service == null) return;
+        final boolean enabled = service.isGpsEnabled();
+        final Button toggle = (Button) findViewById(R.id.gps_toggle);
+        toggle.setText(enabled ? R.string.gps_on : R.string.gps_off);
+        toggle.setBackgroundResource(enabled ? R.drawable.green_button : R.drawable.gray_button);
+
+        // Logging can be on and still produce nothing, so say which of the two is in the way.
+        final TextView note = (TextView) findViewById(R.id.gps_note);
+        String message = null;
+        if (enabled && !service.hasLocationPermission()) {
+            message = getString(R.string.gps_permission_needed);
+        } else if (enabled && !service.isGpsProviderEnabled()) {
+            message = getString(R.string.gps_provider_off);
+        }
+        if (message == null) {
+            note.setVisibility(View.GONE);
+        } else {
+            note.setText(message);
+            note.setVisibility(View.VISIBLE);
         }
     }
 
@@ -193,6 +224,7 @@ public class SettingsActivity extends Activity {
         root.findViewById(R.id.memory_high).setOnClickListener(memoryClickListener);
         root.findViewById(R.id.auto_save_toggle).setOnClickListener(autoSaveToggleClickListener);
         root.findViewById(R.id.low_power_toggle).setOnClickListener(lowPowerToggleClickListener);
+        root.findViewById(R.id.gps_toggle).setOnClickListener(gpsToggleClickListener);
         for (int buttonId : INTERVAL_BUTTONS) {
             root.findViewById(buttonId).setOnClickListener(autoSaveIntervalClickListener);
         }
@@ -302,6 +334,42 @@ public class SettingsActivity extends Activity {
             syncLowPowerUI();
             highlightButtons();
         }
+    }
+
+    /**
+     * Location is the one permission the app asks for out here rather than at startup: it is only
+     * needed by a feature that is off by default, so nobody who does not want it is ever asked.
+     */
+    private class GpsToggleClickListener implements View.OnClickListener {
+        @Override
+        public void onClick(View v) {
+            if (service == null) return;
+            if (service.isGpsEnabled()) {
+                service.setGpsEnabled(false);
+                syncGpsUI();
+                return;
+            }
+            if (!service.hasLocationPermission()) {
+                requestPermissions(new String[]{ Manifest.permission.ACCESS_FINE_LOCATION },
+                        LOCATION_PERMISSION_REQUEST_CODE);
+                return;
+            }
+            service.setGpsEnabled(true);
+            syncGpsUI();
+        }
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions,
+                                           @NonNull int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode != LOCATION_PERMISSION_REQUEST_CODE || service == null) return;
+        // Turning logging on without the permission would only write empty tracks, so the answer
+        // decides whether it goes on at all. The note below the button explains a refusal.
+        if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+            service.setGpsEnabled(true);
+        }
+        syncGpsUI();
     }
 
     private class AutoSaveIntervalClickListener implements View.OnClickListener {

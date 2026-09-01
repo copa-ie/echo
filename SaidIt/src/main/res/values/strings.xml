@@ -126,7 +126,7 @@
     <string name="permission_required">Permission required</string>
     <string name="permission_required_message">Echo app requires permission to record and save audio. Please enable it in the settings.</string>
     <string name="storage_permission_title">All files access</string>
-    <string name="storage_permission_message">Without access to all files, Echo still records, but recordings are kept in the app\'s own storage and disappear if you uninstall it. Grant the access to keep them in Music/Echo instead.</string>
+    <string name="storage_permission_message">Without access to all files, Echo still records, but traces are kept in the app\'s own storage and disappear if you uninstall it. Grant the access to keep them in a shared Echo folder instead.</string>
     <string name="continue_anyway">Continue without it</string>
     <!--
     <string name="compress_help"><b>WAV</b> - oznacza brak jakiejkolwiek kompresji - jest to format najlepiej oszczędzający baterię i cechujący się najlepszą jakością. Jego wadą jest duże zużycie pamięci.\n
@@ -171,35 +171,38 @@
     </plurals>
     <string name="notification_auto_save_off">Automatic save is off</string>
 
-    <!-- Recordings screen -->
+    <!-- Traces screen -->
 
-    <string name="recordings_title">Recordings</string>
+    <string name="traces_title">Traces</string>
     <string name="settings_title">Settings</string>
-    <string name="recordings_loading">Reading storage…</string>
-    <string name="recordings_ranges_title">Time covered that day</string>
-    <string name="recordings_previous_day">Previous day</string>
-    <string name="recordings_next_day">Next day</string>
-    <string name="recordings_day_summary">%1$s · %2$s of audio · %3$s</string>
-    <string name="recordings_day_empty">No recordings were saved on this day.</string>
-    <string name="recordings_jumped_to_day">No recordings that day. Showing the closest one: %1$s</string>
-    <string name="recordings_empty">No recording has been stored yet. Saved files will show up here.</string>
-    <string name="recordings_summary">%1$s · %2$s of audio · %3$s
+    <string name="traces_loading">Reading storage…</string>
+    <string name="traces_ranges_title">Time covered that day</string>
+    <string name="traces_previous_day">Previous day</string>
+    <string name="traces_next_day">Next day</string>
+    <string name="traces_day_summary">%1$s · %2$s of audio · %3$s</string>
+    <string name="traces_day_empty">Nothing was saved on this day.</string>
+    <string name="traces_jumped_to_day">Nothing was saved that day. Showing the closest one: %1$s</string>
+    <string name="traces_empty">Nothing has been stored yet. Saved files will show up here.</string>
+    <string name="traces_summary">%1$s · %2$s of audio · %3$s
 %4$s</string>
-    <string name="recordings_summary_empty">Nothing stored in
+    <string name="traces_summary_empty">Nothing stored in
 %1$s</string>
-    <string name="recordings_range_line">%1$s  %2$s → %3$s
+    <string name="traces_range_line">%1$s  %2$s → %3$s
 %4$s · %5$s</string>
-    <string name="recordings_item_range">%1$s%2$s  %3$s → %4$s</string>
-    <string name="recordings_item_detail">%1$s · %2$s · %3$d kHz · %4$s</string>
-    <plurals name="recordings_file_count">
-        <item quantity="one">%d file</item>
-        <item quantity="other">%d files</item>
+    <string name="traces_item_range">%1$s%2$s  %3$s → %4$s</string>
+    <string name="traces_item_detail">%1$s · %2$s · %3$d kHz · %4$s</string>
+    <string name="traces_item_detail_gps">%1$s · %2$s · GPS · %3$s</string>
+    <string name="traces_count_breakdown">%1$s (%2$d audio, %3$d GPS)</string>
+    <plurals name="traces_file_count">
+        <item quantity="one">%d trace</item>
+        <item quantity="other">%d traces</item>
     </plurals>
-    <string name="recordings_cant_open">No installed app can play this file.</string>
-    <string name="recordings_cant_delete">Couldn\'t delete the file.</string>
-    <string name="recordings_delete_title">Delete recording</string>
-    <string name="recordings_delete_message">Delete %1$s? This cannot be undone.</string>
-    <string name="recordings_delete_confirm">Delete</string>
+    <string name="traces_cant_open">No installed app can play this file.</string>
+    <string name="traces_cant_open_track">No installed app can open a GPX track.</string>
+    <string name="traces_cant_delete">Couldn\'t delete the file.</string>
+    <string name="traces_delete_title">Delete file</string>
+    <string name="traces_delete_message">Delete %1$s? This cannot be undone.</string>
+    <string name="traces_delete_confirm">Delete</string>
 
     <!-- Settings: automatic save -->
 
@@ -210,7 +213,7 @@
         <item quantity="one">%d min</item>
         <item quantity="other">%d min</item>
     </plurals>
-    <string name="storage_location_title">Recordings are saved in</string>
+    <string name="storage_location_title">Traces are saved in</string>
 
     <!-- Health warnings on the main screen -->
 
@@ -233,6 +236,40 @@
     <string name="low_power_hint">Records at 8 kHz: worse quality, a sixth of the data and far fewer wake-ups.</string>
     <string name="low_power_description">For when battery matters more than fidelity. Capture drops to 8 kHz, which is enough to understand speech, so the microphone buffer lasts six times longer between wake-ups, files are a sixth of the size and this screen refreshes less often. Switching it off restores the previous quality. Whatever is in memory is saved before the change, since audio memory cannot survive a format change.</string>
     <string name="notification_low_power_suffix">· low power</string>
+
+    <!-- GPS logging -->
+
+    <string name="gps_title">GPS logging</string>
+    <string name="gps_on">GPS log: ON</string>
+    <string name="gps_off">GPS log: off</string>
+    <string name="gps_hint">Records where you were, saved as a .gpx track beside each recording.</string>
+    <string name="gps_description">While Echo is listening, a location fix is taken every few seconds and written out by the same saves as the audio, into a file with the same name and a .gpx extension. Any map or GPS app opens it. Fixes stop with the recording, and gaps in the signal are kept as gaps rather than drawn as straight lines. In low power mode fixes are taken every 30 seconds instead of every 5.</string>
+    <string name="gps_permission_needed">Echo needs location permission to log a GPS track.</string>
+    <string name="gps_provider_off">GPS is switched off on this device, so no fix will arrive. Turn on location in the system settings.</string>
+    <string name="notification_gps_suffix">\u00b7 GPS</string>
+
+    <!-- Sharing the microphone -->
+
+    <string name="notification_mic_busy">Echo is waiting for the microphone</string>
+    <string name="notification_mic_busy_detail">Another app is using it; recording resumes on its own</string>
+    <string name="warning_mic_silenced">Another app, or a call, is using the microphone, so Android is feeding Echo silence. Recording resumes on its own the moment the input is free.</string>
+    <string name="warning_mic_blocked">The microphone could not be opened, most likely because another app has it. Echo keeps trying and starts recording again as soon as it is free.</string>
+
+    <!-- Diagnostics: microphone and GPS -->
+
+    <string name="diagnostics_mic_shared">Microphone taken by another app</string>
+    <string name="diagnostics_mic_takeovers">Times the microphone was taken</string>
+    <string name="diagnostics_in_call">In a call</string>
+    <string name="diagnostics_mic_shared_note">Android gives the microphone input to one app at a time and feeds the others silence. Echo detects this and picks the recording back up by itself.</string>
+    <string name="diagnostics_gps">GPS logging</string>
+    <string name="diagnostics_gps_permission">Location permission</string>
+    <string name="diagnostics_gps_provider">GPS switched on</string>
+    <string name="diagnostics_gps_fixes">Fixes this run</string>
+    <string name="diagnostics_gps_buffered">Fixes waiting to be saved</string>
+    <string name="diagnostics_gps_last_fix">Last fix</string>
+    <string name="diagnostics_gps_accuracy">\u00b1%1$.0f m</string>
+    <string name="diagnostics_gps_tracks">Tracks saved this run</string>
+    <string name="diagnostics_gps_no_fix_note">Location logging is on but no fix has arrived. GPS needs a view of the sky; indoors there is often nothing to receive.</string>
 
     <!-- Diagnostics -->
 
@@ -292,6 +329,18 @@
     <string name="event_storage_fallback">Using app storage: %1$s</string>
     <string name="event_low_power_on">Low power mode on, dropping to 8 kHz</string>
     <string name="event_low_power_off">Low power mode off, back to %1$.1f kHz</string>
+    <string name="event_mic_taken">The microphone was taken by another app; Echo is being fed silence</string>
+    <string name="event_mic_returned">The microphone is free again, restarting capture</string>
+    <string name="event_mic_regained">The microphone opened again</string>
+    <string name="event_capture_stalled">No audio for %1$d s, restarting capture</string>
+    <string name="event_gps_on">GPS logging on</string>
+    <string name="event_gps_off">GPS logging off</string>
+    <string name="event_gps_started">Asking for a fix every %1$.0f s</string>
+    <string name="event_gps_stopped">GPS logging stopped</string>
+    <string name="event_gps_provider_on">GPS was switched on</string>
+    <string name="event_gps_provider_off">GPS was switched off</string>
+    <string name="event_saved_track">Saved %1$s (%2$d fixes)</string>
+    <string name="event_track_dropped">Track buffer was full, %1$d oldest fixes dropped</string>
 
     <!-- Errors -->
 
@@ -299,6 +348,9 @@
     <string name="error_audio_read">Microphone read error (%1$d), retrying</string>
     <string name="error_capture_failed">Audio capture failed while filling memory.</string>
     <string name="error_cant_write_dir">Cannot write into %1$s</string>
+    <string name="error_no_location_permission">Location permission is missing, so no GPS track is being recorded.</string>
+    <string name="error_no_gps_provider">This device has no GPS provider, so no track can be recorded.</string>
+    <string name="error_cant_write_track">Cannot write the GPS track into %1$s</string>
     <string name="error_cant_go_foreground">Android refused to let Echo run in the foreground. It has to be started from the app, not from the background.</string>
 
 </resources>
