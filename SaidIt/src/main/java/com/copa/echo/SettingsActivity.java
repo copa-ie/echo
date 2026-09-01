@@ -59,8 +59,24 @@ public class SettingsActivity extends Activity {
     @Override
     protected void onStop() {
         super.onStop();
+        handler.removeCallbacks(gpsNoteRefresher);
         unbindService(connection);
     }
+
+    private final Handler handler = new Handler();
+
+    /**
+     * Whether the GPS provider is on is the one thing on this screen the user can change from
+     * outside it, and it can also settle a few seconds after logging is switched on. Drawn once,
+     * the note under the toggle goes stale and says the opposite of the truth.
+     */
+    private final Runnable gpsNoteRefresher = new Runnable() {
+        @Override
+        public void run() {
+            syncGpsUI();
+            handler.postDelayed(this, 2000);
+        }
+    };
 
     SaidItService service;
     ServiceConnection connection = new ServiceConnection() {
@@ -71,6 +87,8 @@ public class SettingsActivity extends Activity {
             SaidItService.BackgroundRecorderBinder typedBinder = (SaidItService.BackgroundRecorderBinder) binder;
             service = typedBinder.getService();
             syncUI();
+            handler.removeCallbacks(gpsNoteRefresher);
+            handler.postDelayed(gpsNoteRefresher, 2000);
         }
 
         @Override

@@ -112,9 +112,11 @@ public class Traces {
             @Override
             public int compare(Entry a, Entry b) {
                 final int byTime = Long.compare(a.startMillis, b.startMillis);
-                // Two traces of the same moment are a recording and its track, and the recording
-                // is the one to read first.
-                return (byTime != 0) ? byTime : a.kind.compareTo(b.kind);
+                if (byTime != 0) return byTime;
+                // Two traces of the same moment are a recording and its track. The screen draws
+                // the day newest first, so sorting the track ahead here is what puts the
+                // recording above it once the list is reversed.
+                return b.kind.compareTo(a.kind);
             }
         });
     }
@@ -186,8 +188,16 @@ public class Traces {
         // all, and this screen is nothing but a timeline.
         if (first == 0 && last == 0 && parseStartFromName(file.getName()) == null) return null;
 
-        if (first > 0 && last >= first) entry.durationSeconds = (last - first) / 1000f;
-        finishEntry(entry);
+        if (first > 0) {
+            // The name is the time of the audio this track was written beside, and capture starts
+            // before the first fix arrives, so the name would place the track earlier than it is.
+            entry.startMillis = first;
+            entry.exactStart = true;
+            if (last >= first) entry.durationSeconds = (last - first) / 1000f;
+            entry.endMillis = entry.startMillis + (long) (entry.durationSeconds * 1000);
+        } else {
+            finishEntry(entry);
+        }
         return entry;
     }
 
