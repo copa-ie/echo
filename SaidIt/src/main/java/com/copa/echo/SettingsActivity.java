@@ -12,6 +12,7 @@ import android.graphics.Rect;
 import android.graphics.Typeface;
 import android.media.AudioFormat;
 import android.media.AudioRecord;
+import android.media.projection.MediaProjectionManager;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.IBinder;
@@ -19,6 +20,7 @@ import android.util.Log;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
+import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.TextView;
@@ -38,8 +40,19 @@ public class SettingsActivity extends Activity {
     private final AutoSaveIntervalClickListener autoSaveIntervalClickListener = new AutoSaveIntervalClickListener();
     private final LowPowerToggleClickListener lowPowerToggleClickListener = new LowPowerToggleClickListener();
     private final GpsToggleClickListener gpsToggleClickListener = new GpsToggleClickListener();
+    private final CameraToggleClickListener cameraToggleClickListener = new CameraToggleClickListener();
+    private final TiltThresholdClickListener tiltThresholdClickListener = new TiltThresholdClickListener();
+    private final ScreenshotToggleClickListener screenshotToggleClickListener = new ScreenshotToggleClickListener();
+    private final UploadToggleClickListener uploadToggleClickListener = new UploadToggleClickListener();
 
     private static final int LOCATION_PERMISSION_REQUEST_CODE = 5466;
+    private static final int CAMERA_PERMISSION_REQUEST_CODE = 5467;
+    private static final int PROJECTION_REQUEST_CODE = 5468;
+
+    /** Selectable tilt angles, in degrees, paired with the buttons below. */
+    private static final int[] TILT_DEGREES = { 30, 45, 60, 90 };
+    private static final int[] TILT_BUTTONS = {
+            R.id.tilt_30, R.id.tilt_45, R.id.tilt_60, R.id.tilt_90 };
 
     /** Selectable automatic save intervals, in minutes, paired with the buttons below. */
     private static final int[] INTERVAL_MINUTES = { 1, 5, 15, 30, 60 };
@@ -59,8 +72,17 @@ public class SettingsActivity extends Activity {
     @Override
     protected void onStop() {
         super.onStop();
+        saveUploadUrl();
+        saveIntervals();
         handler.removeCallbacks(gpsNoteRefresher);
         unbindService(connection);
+    }
+
+    /** Persists whatever is typed into the server URL field, so it survives leaving the screen. */
+    private void saveUploadUrl() {
+        if (service == null) return;
+        final EditText url = (EditText) findViewById(R.id.upload_url);
+        if (url != null) service.setUploadUrl(url.getText().toString());
     }
 
     private final Handler handler = new Handler();
@@ -117,6 +139,90 @@ public class SettingsActivity extends Activity {
         syncAutoSaveUI();
         syncLowPowerUI();
         syncGpsUI();
+        syncCameraUI();
+        syncScreenshotUI();
+        syncUploadUI();
+    }
+
+    private void syncCameraUI() {
+        if (service == null) return;
+        final boolean enabled = service.isCameraEnabled();
+        final Button toggle = (Button) findViewById(R.id.camera_toggle);
+        toggle.setText(enabled ? R.string.camera_on : R.string.camera_off);
+        toggle.setBackgroundResource(enabled ? R.drawable.green_button : R.drawable.gray_button);
+
+        final int current = service.getTiltThresholdDegrees();
+        for (int i = 0; i < TILT_BUTTONS.length; ++i) {
+            final Button button = (Button) findViewById(TILT_BUTTONS[i]);
+            button.setText(getString(R.string.degrees_format, TILT_DEGREES[i]));
+            final boolean selected = enabled && TILT_DEGREES[i] == current;
+            button.setBackgroundResource(selected ? R.drawable.green_button : R.drawable.gray_button);
+            button.setEnabled(enabled);
+        }
+
+        final TextView note = (TextView) findViewById(R.id.camera_note);
+        if (enabled && !service.hasCameraPermission()) {
+            note.setText(R.string.camera_permission_needed);
+            note.setVisibility(View.VISIBLE);
+        } else {
+            note.setVisibility(View.GONE);
+        }
+
+        setNumberField(R.id.camera_min_back, service.getCameraMinBackSeconds());
+        setNumberField(R.id.camera_min_front, service.getCameraMinFrontSeconds());
+    }
+
+    private void syncScreenshotUI() {
+        if (service == null) return;
+        final boolean on = service.isScreenshotEnabled();
+        final Button toggle = (Button) findViewById(R.id.screenshot_toggle);
+        toggle.setText(on ? R.string.screenshot_on : R.string.screenshot_off);
+        toggle.setBackgroundResource(on ? R.drawable.green_button : R.drawable.gray_button);
+
+        setNumberField(R.id.screenshot_min, service.getScreenshotMinSeconds());
+    }
+
+    /** Fills a number field, leaving it alone while its value already matches what is typed. */
+    private void setNumberField(int id, int value) {
+        final EditText field = (EditText) findViewById(id);
+        if (!field.getText().toString().equals(Integer.toString(value))) {
+            field.setText(Integer.toString(value));
+        }
+    }
+
+    private int readNumberField(int id, int fallback) {
+        final EditText field = (EditText) findViewById(id);
+        if (field == null) return fallback;
+        try {
+            return Integer.parseInt(field.getText().toString().trim());
+        } catch (NumberFormatException e) {
+            return fallback;
+        }
+    }
+
+    /** Persists the three minimum-interval fields, so they survive leaving the screen. */
+    private void saveIntervals() {
+        if (service == null) return;
+        service.setCameraMinIntervals(
+                readNumberField(R.id.camera_min_back, service.getCameraMinBackSeconds()),
+                readNumberField(R.id.camera_min_front, service.getCameraMinFrontSeconds()));
+        service.setScreenshotMinSeconds(
+                readNumberField(R.id.screenshot_min, service.getScreenshotMinSeconds()));
+    }
+
+    private void syncUploadUI() {
+        if (service == null) return;
+        final boolean on = service.isUploadEnabled();
+        final Button toggle = (Button) findViewById(R.id.upload_toggle);
+        toggle.setText(on ? R.string.upload_on : R.string.upload_off);
+        toggle.setBackgroundResource(on ? R.drawable.green_button : R.drawable.gray_button);
+
+        final EditText url = (EditText) findViewById(R.id.upload_url);
+        // Only overwrite what the user is typing when it is genuinely different, so the cursor
+        // does not jump while the once-a-bind sync runs.
+        if (!url.getText().toString().equals(service.getUploadUrl())) {
+            url.setText(service.getUploadUrl());
+        }
     }
 
     private void syncAutoSaveUI() {
@@ -243,8 +349,14 @@ public class SettingsActivity extends Activity {
         root.findViewById(R.id.auto_save_toggle).setOnClickListener(autoSaveToggleClickListener);
         root.findViewById(R.id.low_power_toggle).setOnClickListener(lowPowerToggleClickListener);
         root.findViewById(R.id.gps_toggle).setOnClickListener(gpsToggleClickListener);
+        root.findViewById(R.id.camera_toggle).setOnClickListener(cameraToggleClickListener);
+        root.findViewById(R.id.screenshot_toggle).setOnClickListener(screenshotToggleClickListener);
+        root.findViewById(R.id.upload_toggle).setOnClickListener(uploadToggleClickListener);
         for (int buttonId : INTERVAL_BUTTONS) {
             root.findViewById(buttonId).setOnClickListener(autoSaveIntervalClickListener);
+        }
+        for (int buttonId : TILT_BUTTONS) {
+            root.findViewById(buttonId).setOnClickListener(tiltThresholdClickListener);
         }
 
         initSampleRateButton(root, R.id.quality_8kHz, 8000, 11025);
@@ -381,13 +493,20 @@ public class SettingsActivity extends Activity {
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions,
                                            @NonNull int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        if (requestCode != LOCATION_PERMISSION_REQUEST_CODE || service == null) return;
-        // Turning logging on without the permission would only write empty tracks, so the answer
-        // decides whether it goes on at all. The note below the button explains a refusal.
-        if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-            service.setGpsEnabled(true);
+        if (service == null) return;
+        if (requestCode == LOCATION_PERMISSION_REQUEST_CODE) {
+            // Turning logging on without the permission would only write empty tracks, so the
+            // answer decides whether it goes on at all. The note below the button explains a refusal.
+            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                service.setGpsEnabled(true);
+            }
+            syncGpsUI();
+        } else if (requestCode == CAMERA_PERMISSION_REQUEST_CODE) {
+            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                service.setCameraEnabled(true);
+            }
+            syncCameraUI();
         }
-        syncGpsUI();
     }
 
     private class AutoSaveIntervalClickListener implements View.OnClickListener {
@@ -402,6 +521,96 @@ public class SettingsActivity extends Activity {
             }
             syncAutoSaveUI();
         }
+    }
+
+    /**
+     * Camera capture, like GPS, asks for its permission out here rather than at startup: it is off
+     * by default, so nobody who does not want it is ever prompted.
+     */
+    private class CameraToggleClickListener implements View.OnClickListener {
+        @Override
+        public void onClick(View v) {
+            if (service == null) return;
+            saveIntervals();
+            if (service.isCameraEnabled()) {
+                service.setCameraEnabled(false);
+                syncCameraUI();
+                return;
+            }
+            if (!service.hasCameraPermission()) {
+                requestPermissions(new String[]{ Manifest.permission.CAMERA },
+                        CAMERA_PERMISSION_REQUEST_CODE);
+                return;
+            }
+            service.setCameraEnabled(true);
+            syncCameraUI();
+        }
+    }
+
+    private class TiltThresholdClickListener implements View.OnClickListener {
+        @Override
+        public void onClick(View v) {
+            if (service == null) return;
+            for (int i = 0; i < TILT_BUTTONS.length; ++i) {
+                if (TILT_BUTTONS[i] == v.getId()) {
+                    service.setTiltThresholdDegrees(TILT_DEGREES[i]);
+                    break;
+                }
+            }
+            syncCameraUI();
+        }
+    }
+
+    /**
+     * Screenshots need a MediaProjection consent, which is an activity result. Turning them on
+     * launches the system dialog; the answer comes back to {@link #onActivityResult}.
+     */
+    private class ScreenshotToggleClickListener implements View.OnClickListener {
+        @Override
+        public void onClick(View v) {
+            if (service == null) return;
+            saveIntervals();
+            if (service.isScreenshotEnabled()) {
+                service.stopScreenCapture();
+                syncScreenshotUI();
+                return;
+            }
+            if (!service.isListeningForScreenshots()) {
+                android.widget.Toast.makeText(SettingsActivity.this,
+                        R.string.screenshot_needs_listening, android.widget.Toast.LENGTH_LONG).show();
+                return;
+            }
+            final MediaProjectionManager manager = getSystemService(MediaProjectionManager.class);
+            if (manager != null) {
+                startActivityForResult(manager.createScreenCaptureIntent(), PROJECTION_REQUEST_CODE);
+            }
+        }
+    }
+
+    private class UploadToggleClickListener implements View.OnClickListener {
+        @Override
+        public void onClick(View v) {
+            if (service == null) return;
+            saveUploadUrl();
+            service.setUploadEnabled(!service.isUploadEnabled());
+            syncUploadUI();
+        }
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode != PROJECTION_REQUEST_CODE || service == null) return;
+        if (resultCode == Activity.RESULT_OK && data != null) {
+            if (!service.startScreenCapture(resultCode, data)) {
+                android.widget.Toast.makeText(this, R.string.screenshot_denied,
+                        android.widget.Toast.LENGTH_LONG).show();
+            }
+        } else {
+            android.widget.Toast.makeText(this, R.string.screenshot_denied,
+                    android.widget.Toast.LENGTH_LONG).show();
+        }
+        syncScreenshotUI();
     }
 
 }

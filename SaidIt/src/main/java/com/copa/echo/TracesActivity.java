@@ -312,15 +312,27 @@ public class TracesActivity extends Activity {
         }
     }
 
-    /** "12 traces (6 audio, 6 GPS)", dropping the breakdown when there is only one kind. */
+    /** "25 traces (6 audio, 6 GPS, 13 photos)", dropping the breakdown when there is one kind. */
     private String countLabel(List<Traces.Entry> entries) {
         final int total = entries.size();
         final String count = getResources().getQuantityString(
                 R.plurals.traces_file_count, total, total);
         final int audio = Traces.countOf(entries, Traces.Kind.AUDIO);
-        final int location = total - audio;
-        if (audio == 0 || location == 0) return count;
-        return getString(R.string.traces_count_breakdown, count, audio, location);
+        final int location = Traces.countOf(entries, Traces.Kind.LOCATION);
+        final int image = Traces.countOf(entries, Traces.Kind.IMAGE);
+
+        final List<String> parts = new ArrayList<String>();
+        if (audio > 0) parts.add(getString(R.string.traces_kind_audio, audio));
+        if (location > 0) parts.add(getString(R.string.traces_kind_gps, location));
+        if (image > 0) parts.add(getString(R.string.traces_kind_images, image));
+        if (parts.size() <= 1) return count;
+
+        final StringBuilder joined = new StringBuilder();
+        for (int i = 0; i < parts.size(); ++i) {
+            if (i > 0) joined.append(", ");
+            joined.append(parts.get(i));
+        }
+        return getString(R.string.traces_count_wrap, count, joined.toString());
     }
 
     private void openDatePicker() {
@@ -401,16 +413,32 @@ public class TracesActivity extends Activity {
         try {
             final Uri uri = FileProvider.getUriForFile(this, getPackageName() + ".provider", file);
             final Intent intent = new Intent(Intent.ACTION_VIEW);
-            intent.setDataAndType(uri, entry.kind == Traces.Kind.AUDIO
-                    ? "audio/wav" : "application/gpx+xml");
+            intent.setDataAndType(uri, mimeOf(entry));
             intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
             startActivity(intent);
         } catch (Exception e) {
             Log.w(TAG, "Can't open " + file.getName(), e);
-            Toast.makeText(this, entry.kind == Traces.Kind.AUDIO
-                    ? R.string.traces_cant_open : R.string.traces_cant_open_track,
-                    Toast.LENGTH_LONG).show();
+            final int message;
+            if (entry.kind == Traces.Kind.AUDIO) message = R.string.traces_cant_open;
+            else if (entry.kind == Traces.Kind.IMAGE) message = R.string.traces_cant_open_image;
+            else message = R.string.traces_cant_open_track;
+            Toast.makeText(this, message, Toast.LENGTH_LONG).show();
         }
+    }
+
+    private static String mimeOf(Traces.Entry entry) {
+        if (entry.kind == Traces.Kind.AUDIO) return "audio/wav";
+        if (entry.kind == Traces.Kind.LOCATION) return "application/gpx+xml";
+        return entry.file.getName().toLowerCase(Locale.US).endsWith(".png") ? "image/png" : "image/jpeg";
+    }
+
+    /** The label an image trace shows, told apart by the suffix its capturer wrote. */
+    private String imageKindLabel(File file) {
+        final String name = file.getName().toLowerCase(Locale.US);
+        if (name.contains("_screen.")) return getString(R.string.traces_image_screen);
+        if (name.contains("_front.")) return getString(R.string.traces_image_front);
+        if (name.contains("_back.")) return getString(R.string.traces_image_back);
+        return getString(R.string.traces_image_generic);
     }
 
     private void confirmDelete(final File file) {
@@ -460,16 +488,25 @@ public class TracesActivity extends Activity {
             final String end = timeFormat.format(new Date(entry.endMillis));
             final String approx = entry.exactStart ? "" : "~";
 
-            ((TextView) view.findViewById(R.id.trace_range)).setText(
-                    getString(R.string.traces_item_range, approx, dayLabel(entry.startMillis), start, end));
+            // An image is an instant, so it shows a single time rather than a start → end range.
+            final String range = entry.kind == Traces.Kind.IMAGE
+                    ? getString(R.string.traces_item_moment, approx, dayLabel(entry.startMillis), start)
+                    : getString(R.string.traces_item_range, approx, dayLabel(entry.startMillis), start, end);
+            ((TextView) view.findViewById(R.id.trace_range)).setText(range);
+
             final String duration = longDuration((long) (entry.durationSeconds * 1000));
             final String size = StringFormat.shortFileSize(entry.sizeBytes);
-            ((TextView) view.findViewById(R.id.trace_detail)).setText(
-                    entry.kind == Traces.Kind.AUDIO
-                            ? getString(R.string.traces_item_detail, duration, size,
-                                    entry.sampleRate / 1000, entry.file.getName())
-                            : getString(R.string.traces_item_detail_gps, duration, size,
-                                    entry.file.getName()));
+            final String detail;
+            if (entry.kind == Traces.Kind.AUDIO) {
+                detail = getString(R.string.traces_item_detail, duration, size,
+                        entry.sampleRate / 1000, entry.file.getName());
+            } else if (entry.kind == Traces.Kind.IMAGE) {
+                detail = getString(R.string.traces_item_detail_image,
+                        imageKindLabel(entry.file), size, entry.file.getName());
+            } else {
+                detail = getString(R.string.traces_item_detail_gps, duration, size, entry.file.getName());
+            }
+            ((TextView) view.findViewById(R.id.trace_detail)).setText(detail);
             return view;
         }
     }

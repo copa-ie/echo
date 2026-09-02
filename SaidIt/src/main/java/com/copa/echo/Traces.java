@@ -43,7 +43,7 @@ public class Traces {
     public static final long DEFAULT_MAX_GAP_MILLIS = 5000;
 
     /** What a trace is a trace of. */
-    public enum Kind { AUDIO, LOCATION }
+    public enum Kind { AUDIO, LOCATION, IMAGE }
 
     public static class Entry {
         public File file;
@@ -100,6 +100,8 @@ public class Traces {
                 entry = readAudioEntry(file);
             } else if (name.endsWith(".gpx")) {
                 entry = readLocationEntry(file);
+            } else if (name.endsWith(".jpg") || name.endsWith(".png")) {
+                entry = readImageEntry(file);
             } else {
                 continue;
             }
@@ -199,6 +201,43 @@ public class Traces {
             finishEntry(entry);
         }
         return entry;
+    }
+
+    /**
+     * A photo or a screenshot is a single instant, not a stretch: it has no duration, so its start
+     * and end are the same moment, taken from the file name or, failing that, its mtime.
+     */
+    private static Entry readImageEntry(File file) {
+        final Entry entry = new Entry();
+        entry.file = file;
+        entry.kind = Kind.IMAGE;
+        entry.sizeBytes = file.length();
+        entry.durationSeconds = 0;
+
+        // Image names carry a text suffix (_back, _front, _screen) the audio names never do, so
+        // the timestamp is read from the front of the name rather than by matching the whole of it.
+        final Long namedStart = parseLeadingTimestamp(file.getName());
+        if (namedStart != null) {
+            entry.startMillis = namedStart;
+            entry.exactStart = true;
+        } else {
+            entry.startMillis = file.lastModified();
+            entry.exactStart = false;
+        }
+        entry.endMillis = entry.startMillis;
+        return entry;
+    }
+
+    private static final Pattern LEADING_TIME_PATTERN = Pattern.compile("^(\\d{8}_\\d{6})");
+
+    static Long parseLeadingTimestamp(String fileName) {
+        final Matcher matcher = LEADING_TIME_PATTERN.matcher(fileName);
+        if (!matcher.find()) return null;
+        try {
+            return new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).parse(matcher.group(1)).getTime();
+        } catch (ParseException e) {
+            return null;
+        }
     }
 
     /** Fills in the start and end every kind of trace shares, given its length. */

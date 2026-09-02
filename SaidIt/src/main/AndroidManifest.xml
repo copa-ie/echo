@@ -15,6 +15,18 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
     <uses-feature android:name="android.hardware.location.gps" android:required="false" />
 
+    <!-- Optional tilt-triggered camera capture. Used only from the foreground service. -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA" />
+    <uses-feature android:name="android.hardware.camera.any" android:required="false" />
+
+    <!-- Optional screenshots via MediaProjection, granted by the user each session. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
+
+    <!-- Sending traces to a server and deleting them once they land. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
     <application
         android:allowBackup="false"
         android:icon="@drawable/ic_launcher"
@@ -33,7 +45,7 @@
 
         <service
             android:name=".SaidItService"
-            android:foregroundServiceType="microphone|location"
+            android:foregroundServiceType="microphone|location|camera|mediaProjection"
             android:enabled="true"
             android:exported="false">
         </service>

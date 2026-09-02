@@ -142,6 +142,44 @@ public class SaidItService extends Service {
     private volatile int autoSaveIntervalMinutes = AUTO_SAVE_INTERVAL_DEFAULT;
     private volatile boolean lowPower = false;
     private volatile long memorySizePref = 0;
+    private volatile boolean cameraEnabled = false;
+    private volatile int tiltThresholdDegrees = TILT_THRESHOLD_DEFAULT;
+    private volatile int cameraMinBackSeconds = CAMERA_MIN_BACK_DEFAULT;
+    private volatile int cameraMinFrontSeconds = CAMERA_MIN_FRONT_DEFAULT;
+    private volatile int screenshotMinSeconds = SCREENSHOT_MIN_DEFAULT;
+    private volatile boolean uploadEnabled = false;
+    private volatile String uploadUrl = "";
+    /**
+     * Screenshots are never remembered across a restart: the MediaProjection token cannot outlive
+     * the process, so this is in-memory only and starts off every launch.
+     */
+    private volatile boolean screenshotEnabled = false;
+
+    /** Optional tilt-triggered camera capture, GPS-style: off unless the user turns it on. */
+    private TiltCameraCapturer cameraCapturer;
+    /** Optional MediaProjection screenshots, alive only while the user keeps them on. */
+    private ScreenCapturer screenCapturer;
+    /** Sends saved traces to a server and deletes them once accepted. */
+    private TraceUploader uploader;
+
+    /**
+     * Both visual capturers want the same two things: where to write, and a nudge to the uploader
+     * once a file lands. tracesDir() probes the disk, so it is only ever called from their own
+     * background threads.
+     */
+    private final CaptureListener captureListener = new CaptureListener();
+
+    private final class CaptureListener implements TiltCameraCapturer.Listener, ScreenCapturer.Listener {
+        @Override
+        public File tracesDir() {
+            return getTracesDir();
+        }
+
+        @Override
+        public void onCaptured(File file) {
+            if(uploader != null) uploader.kick();
+        }
+    }
 
     /** Guards against a save being started from inside another one. Audio thread only. */
     private boolean writing = false;
@@ -168,6 +206,13 @@ public class SaidItService extends Service {
         autoSaveIntervalMinutes = preferences.getInt(AUTO_SAVE_INTERVAL_KEY, AUTO_SAVE_INTERVAL_DEFAULT);
         lowPower = preferences.getBoolean(LOW_POWER_KEY, false);
         gpsEnabled = preferences.getBoolean(GPS_ENABLED_KEY, false);
+        cameraEnabled = preferences.getBoolean(CAMERA_ENABLED_KEY, false);
+        tiltThresholdDegrees = preferences.getInt(TILT_THRESHOLD_KEY, TILT_THRESHOLD_DEFAULT);
+        cameraMinBackSeconds = preferences.getInt(CAMERA_MIN_BACK_KEY, CAMERA_MIN_BACK_DEFAULT);
+        cameraMinFrontSeconds = preferences.getInt(CAMERA_MIN_FRONT_KEY, CAMERA_MIN_FRONT_DEFAULT);
+        screenshotMinSeconds = preferences.getInt(SCREENSHOT_MIN_KEY, SCREENSHOT_MIN_DEFAULT);
+        uploadEnabled = preferences.getBoolean(UPLOAD_ENABLED_KEY, false);
+        uploadUrl = preferences.getString(UPLOAD_URL_KEY, "");
         memorySizePref = preferences.getLong(AUDIO_MEMORY_SIZE_KEY, Runtime.getRuntime().maxMemory() / 4);
 
         SAMPLE_RATE = lowPower
@@ -183,6 +228,11 @@ public class SaidItService extends Service {
         createNotificationChannel();
         registerRecordingCallback();
         logEvent(getString(R.string.event_service_started));
+
+        uploader = new TraceUploader(this);
+        uploader.configure(uploadEnabled, uploadUrl);
+        cameraCapturer = new TiltCameraCapturer(this, captureListener);
+        screenCapturer = new ScreenCapturer(this, captureListener);
 
         // Probing the filesystem is disk work, so keep it off the main thread.
         audioHandler.post(new Runnable() {
@@ -208,6 +258,9 @@ public class SaidItService extends Service {
         audioHandler.removeCallbacks(autoSaveWatchdog);
         autoSaveDeadline = -1;
         innerStopListening(); // queues a last save of whatever is still in memory
+        if(cameraCapturer != null) cameraCapturer.stop();
+        if(screenCapturer != null) screenCapturer.stop();
+        if(uploader != null) uploader.shutdown();
         stopForeground(true);
         // Lets the queued save run and only then ends the thread, instead of leaking one
         // HandlerThread per service lifetime.
@@ -279,6 +332,8 @@ public class SaidItService extends Service {
         armAutoSave();
         armCaptureWatchdog();
         startLocationUpdates();
+        if(cameraEnabled) cameraCapturer.start(tiltThresholdDegrees,
+                cameraMinBackSeconds * 1000L, cameraMinFrontSeconds * 1000L);
         logEvent(getString(R.string.event_listening_started, SAMPLE_RATE / 1000f));
     }
 
@@ -296,6 +351,10 @@ public class SaidItService extends Service {
         audioHandler.removeCallbacks(autoSaveWatchdog);
         // Location stops with the audio it annotates; the save queued above takes the fixes with it.
         stopLocationUpdates();
+        // The visual capturers only make sense while the service is foreground, which ends here.
+        cameraCapturer.stop();
+        screenCapturer.stop();
+        screenshotEnabled = false;
         Log.d(TAG, "Queueing: STOP LISTENING");
         logEvent(getString(R.string.event_listening_stopped));
 
@@ -591,11 +650,11 @@ public class SaidItService extends Service {
     }
 
     /** Traces are named after the wall clock time of their first sample, see {@link Traces}. */
-    private static String timestampName(long millis) {
+    static String timestampName(long millis) {
         return new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(new Date(millis));
     }
 
-    private static File uniqueFile(File dir, String baseName, String extension) {
+    static File uniqueFile(File dir, String baseName, String extension) {
         File file = new File(dir, baseName + extension);
         for(int i = 2; file.exists(); ++i) {
             file = new File(dir, baseName + "_" + i + extension);
@@ -747,6 +806,7 @@ public class SaidItService extends Service {
         audioMemory.reset();
         // Same base name as the recording, so a file and its track are obviously a pair.
         writeTrack(dir, baseNameOf(file));
+        if(uploader != null) uploader.kick();
 
         Log.d(TAG, "Saved " + written + " B into " + file.getAbsolutePath());
         // Audio is being kept again, so stop showing whatever failed earlier.
@@ -882,6 +942,143 @@ public class SaidItService extends Service {
                 == PackageManager.PERMISSION_GRANTED;
     }
 
+    // ------------------------------------------------------------------ tilt camera capture
+
+    public boolean isCameraEnabled() {
+        return cameraEnabled;
+    }
+
+    public boolean hasCameraPermission() {
+        return checkSelfPermission(android.Manifest.permission.CAMERA)
+                == PackageManager.PERMISSION_GRANTED;
+    }
+
+    public int getTiltThresholdDegrees() {
+        return tiltThresholdDegrees;
+    }
+
+    public void setTiltThresholdDegrees(int degrees) {
+        tiltThresholdDegrees = Math.max(5, Math.min(175, degrees));
+        prefs().edit().putInt(TILT_THRESHOLD_KEY, tiltThresholdDegrees).apply();
+        if(cameraCapturer != null) cameraCapturer.setThresholdDegrees(tiltThresholdDegrees);
+    }
+
+    public int getCameraMinBackSeconds() {
+        return cameraMinBackSeconds;
+    }
+
+    public int getCameraMinFrontSeconds() {
+        return cameraMinFrontSeconds;
+    }
+
+    /** Sets the shortest gap between shots of each camera, applied live. */
+    public void setCameraMinIntervals(int backSeconds, int frontSeconds) {
+        cameraMinBackSeconds = Math.max(0, backSeconds);
+        cameraMinFrontSeconds = Math.max(0, frontSeconds);
+        prefs().edit()
+                .putInt(CAMERA_MIN_BACK_KEY, cameraMinBackSeconds)
+                .putInt(CAMERA_MIN_FRONT_KEY, cameraMinFrontSeconds)
+                .apply();
+        if(cameraCapturer != null) {
+            cameraCapturer.setMinIntervals(cameraMinBackSeconds * 1000L, cameraMinFrontSeconds * 1000L);
+        }
+    }
+
+    /**
+     * Turns tilt-triggered capture on or off. Like GPS it declares a foreground service type, so
+     * turning it on re-declares the service before the camera is ever touched.
+     */
+    public void setCameraEnabled(boolean enabled) {
+        if(enabled == cameraEnabled) return;
+        cameraEnabled = enabled;
+        prefs().edit().putBoolean(CAMERA_ENABLED_KEY, enabled).apply();
+        if(enabled) {
+            refreshForegroundType();
+            if(state == STATE_LISTENING) cameraCapturer.start(tiltThresholdDegrees,
+                    cameraMinBackSeconds * 1000L, cameraMinFrontSeconds * 1000L);
+            logEvent(getString(R.string.event_camera_on));
+        } else {
+            cameraCapturer.stop();
+            refreshForegroundType();
+            logEvent(getString(R.string.event_camera_off));
+        }
+        updateNotification();
+    }
+
+    // ------------------------------------------------------------------ screenshots
+
+    public boolean isScreenshotEnabled() {
+        return screenshotEnabled && screenCapturer != null && screenCapturer.isRunning();
+    }
+
+    /** True while Echo is foreground and recording, which is when screenshots may run. */
+    public boolean isListeningForScreenshots() {
+        return state == STATE_LISTENING;
+    }
+
+    public int getScreenshotMinSeconds() {
+        return screenshotMinSeconds;
+    }
+
+    public void setScreenshotMinSeconds(int seconds) {
+        screenshotMinSeconds = Math.max(1, seconds);
+        prefs().edit().putInt(SCREENSHOT_MIN_KEY, screenshotMinSeconds).apply();
+        if(screenCapturer != null) screenCapturer.setMinIntervalMillis(screenshotMinSeconds * 1000L);
+    }
+
+    /**
+     * Starts MediaProjection screenshots with a consent the activity has just been granted. The
+     * service must be foreground first, so the media-projection type is declared before the
+     * projection is created. Only works while listening, since that is when Echo is foreground.
+     */
+    public boolean startScreenCapture(int resultCode, Intent data) {
+        if(state != STATE_LISTENING) return false;
+        screenshotEnabled = true;
+        refreshForegroundType();
+        screenCapturer.setMinIntervalMillis(screenshotMinSeconds * 1000L);
+        final boolean started = screenCapturer.start(resultCode, data);
+        if(started) {
+            logEvent(getString(R.string.event_screenshot_on));
+        } else {
+            screenshotEnabled = false;
+            refreshForegroundType();
+        }
+        updateNotification();
+        return started;
+    }
+
+    public void stopScreenCapture() {
+        if(!screenshotEnabled) return;
+        screenCapturer.stop();
+        screenshotEnabled = false;
+        refreshForegroundType();
+        logEvent(getString(R.string.event_screenshot_off));
+        updateNotification();
+    }
+
+    // ------------------------------------------------------------------ uploading
+
+    public boolean isUploadEnabled() {
+        return uploadEnabled;
+    }
+
+    public String getUploadUrl() {
+        return uploadUrl;
+    }
+
+    public void setUploadEnabled(boolean enabled) {
+        uploadEnabled = enabled;
+        prefs().edit().putBoolean(UPLOAD_ENABLED_KEY, enabled).apply();
+        if(uploader != null) uploader.configure(uploadEnabled, uploadUrl);
+        logEvent(getString(enabled ? R.string.event_upload_on : R.string.event_upload_off));
+    }
+
+    public void setUploadUrl(String url) {
+        uploadUrl = url == null ? "" : url.trim();
+        prefs().edit().putString(UPLOAD_URL_KEY, uploadUrl).apply();
+        if(uploader != null) uploader.configure(uploadEnabled, uploadUrl);
+    }
+
     /** True when the GPS provider itself is switched on, which no permission can substitute for. */
     public boolean isGpsProviderEnabled() {
         final LocationManager manager = locationManager();
@@ -993,6 +1190,7 @@ public class SaidItService extends Service {
         lastTrackName = file.getName();
         logEvent(getString(R.string.event_saved_track, file.getName(), points));
         if(dropped > 0) logEvent(getString(R.string.event_track_dropped, dropped));
+        if(uploader != null) uploader.kick();
     }
 
     // ------------------------------------------------------------------ capture loop
@@ -1423,6 +1621,14 @@ public class SaidItService extends Service {
         if(gpsEnabled && hasLocationPermission()) {
             types |= ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION;
         }
+        // The camera type is only ever claimed while the permission for it is held, or Android 14
+        // refuses to go foreground at all, exactly like location above.
+        if(cameraEnabled && cameraCapturer != null && cameraCapturer.hasCameraPermission()) {
+            types |= ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA;
+        }
+        if(screenshotEnabled) {
+            types |= ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION;
+        }
         return types;
     }
 
@@ -1477,6 +1683,15 @@ public class SaidItService extends Service {
         }
         if(gpsEnabled) {
             detail = detail + " " + getString(R.string.notification_gps_suffix);
+        }
+        if(cameraEnabled) {
+            detail = detail + " " + getString(R.string.notification_camera_suffix);
+        }
+        if(screenshotEnabled) {
+            detail = detail + " " + getString(R.string.notification_screenshot_suffix);
+        }
+        if(uploadEnabled) {
+            detail = detail + " " + getString(R.string.notification_upload_suffix);
         }
 
         return new NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)

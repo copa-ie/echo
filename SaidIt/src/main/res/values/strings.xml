@@ -190,15 +190,26 @@
     <string name="traces_range_line">%1$s  %2$s → %3$s
 %4$s · %5$s</string>
     <string name="traces_item_range">%1$s%2$s  %3$s → %4$s</string>
+    <string name="traces_item_moment">%1$s%2$s  %3$s</string>
     <string name="traces_item_detail">%1$s · %2$s · %3$d kHz · %4$s</string>
     <string name="traces_item_detail_gps">%1$s · %2$s · GPS · %3$s</string>
+    <string name="traces_item_detail_image">%1$s · %2$s · %3$s</string>
     <string name="traces_count_breakdown">%1$s (%2$d audio, %3$d GPS)</string>
+    <string name="traces_count_wrap">%1$s (%2$s)</string>
+    <string name="traces_kind_audio">%1$d audio</string>
+    <string name="traces_kind_gps">%1$d GPS</string>
+    <string name="traces_kind_images">%1$d photos</string>
+    <string name="traces_image_back">Back photo</string>
+    <string name="traces_image_front">Front photo</string>
+    <string name="traces_image_screen">Screenshot</string>
+    <string name="traces_image_generic">Photo</string>
     <plurals name="traces_file_count">
         <item quantity="one">%d trace</item>
         <item quantity="other">%d traces</item>
     </plurals>
     <string name="traces_cant_open">No installed app can play this file.</string>
     <string name="traces_cant_open_track">No installed app can open a GPX track.</string>
+    <string name="traces_cant_open_image">No installed app can open this image.</string>
     <string name="traces_cant_delete">Couldn\'t delete the file.</string>
     <string name="traces_delete_title">Delete file</string>
     <string name="traces_delete_message">Delete %1$s? This cannot be undone.</string>
@@ -341,6 +352,48 @@
     <string name="event_gps_provider_off">GPS was switched off</string>
     <string name="event_saved_track">Saved %1$s (%2$d fixes)</string>
     <string name="event_track_dropped">Track buffer was full, %1$d oldest fixes dropped</string>
+
+    <!-- Tilt camera capture -->
+
+    <string name="camera_title">Camera on tilt</string>
+    <string name="camera_on">Tilt capture: ON</string>
+    <string name="camera_off">Tilt capture: off</string>
+    <string name="camera_description">While Echo is listening, tilting the phone past the angle below takes one still from the front camera and one from the back, with no preview, saved beside the audio as .jpg files. It fires once each time the phone is tilted and not again until it is laid back flat, and never more than once every few seconds. Needs the camera permission.</string>
+    <string name="camera_permission_needed">Echo needs the camera permission to take photos on tilt.</string>
+    <string name="tilt_threshold_title">Tilt angle</string>
+    <string name="tilt_threshold_description">How far the phone is tilted away from lying flat before a capture fires. 90° is straight up on edge.</string>
+    <string name="degrees_format">%1$d°</string>
+    <string name="camera_min_title">Minimum seconds between shots</string>
+    <string name="camera_min_back_label">Back camera (seconds)</string>
+    <string name="camera_min_front_label">Front camera (seconds)</string>
+    <string name="notification_camera_suffix">· camera</string>
+
+    <!-- Screenshots -->
+
+    <string name="screenshot_title">Screenshots</string>
+    <string name="screenshot_on">Screenshots: ON</string>
+    <string name="screenshot_off">Screenshots: off</string>
+    <string name="screenshot_description">Takes a screenshot every so often while the screen is on, using Android\'s screen capture. Android asks you to allow it once and shows a capture indicator the whole time it is on. The permission cannot outlive the app, so screenshots switch off if Echo is stopped and have to be turned on again. Only available while Echo is listening.</string>
+    <string name="screenshot_denied">Screen capture was not allowed, so screenshots stay off.</string>
+    <string name="screenshot_needs_listening">Start Echo listening first, then turn on screenshots.</string>
+    <string name="screenshot_min_label">Minimum seconds between screenshots</string>
+    <string name="notification_screenshot_suffix">· screen</string>
+
+    <!-- Uploading traces -->
+
+    <string name="upload_title">Send to server</string>
+    <string name="upload_on">Sending: ON</string>
+    <string name="upload_off">Sending: off</string>
+    <string name="upload_url_hint">https://example.com/upload</string>
+    <string name="upload_description">Sends saved traces to the server above, oldest first, and deletes each one from the phone once the server has accepted it. Audio, GPS tracks and captured photos are all sent. On Android 14 and up this uses HTTP/3 (QUIC); older versions fall back to HTTPS. Nothing is deleted until it has been sent.</string>
+    <string name="notification_upload_suffix">· upload</string>
+
+    <string name="event_camera_on">Tilt camera capture on</string>
+    <string name="event_camera_off">Tilt camera capture off</string>
+    <string name="event_screenshot_on">Screenshots on</string>
+    <string name="event_screenshot_off">Screenshots off</string>
+    <string name="event_upload_on">Trace upload on</string>
+    <string name="event_upload_off">Trace upload off</string>
 
     <!-- Errors -->
 

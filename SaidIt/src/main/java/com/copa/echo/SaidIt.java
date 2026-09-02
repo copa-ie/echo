@@ -12,6 +12,21 @@ public class SaidIt {
     static final String LOW_POWER_KEY = "low_power";
     static final String GPS_ENABLED_KEY = "gps_enabled";
     static final String PRE_LOW_POWER_SAMPLE_RATE_KEY = "pre_low_power_sample_rate";
+    /** Take a photo from both cameras whenever the phone is tilted past the threshold below. */
+    static final String CAMERA_ENABLED_KEY = "camera_capture_enabled";
+    static final String TILT_THRESHOLD_KEY = "tilt_threshold_degrees";
+    /** Degrees of tilt away from lying flat that triggers a capture. */
+    static final int TILT_THRESHOLD_DEFAULT = 45;
+    /** Shortest seconds between two captures, kept apart for each of the three kinds. */
+    static final String CAMERA_MIN_BACK_KEY = "camera_min_back_seconds";
+    static final String CAMERA_MIN_FRONT_KEY = "camera_min_front_seconds";
+    static final String SCREENSHOT_MIN_KEY = "screenshot_min_seconds";
+    static final int CAMERA_MIN_BACK_DEFAULT = 8;
+    static final int CAMERA_MIN_FRONT_DEFAULT = 8;
+    static final int SCREENSHOT_MIN_DEFAULT = 60;
+    /** Send saved traces to a server and delete them once accepted. */
+    static final String UPLOAD_ENABLED_KEY = "upload_enabled";
+    static final String UPLOAD_URL_KEY = "upload_url";
     /** Sample rate low power mode drops to: enough for speech, a sixth of the data of 48 kHz. */
     static final int LOW_POWER_SAMPLE_RATE = 8000;
     /** How often a location fix is asked for while logging. */
